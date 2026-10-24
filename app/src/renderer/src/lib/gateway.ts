@@ -25,14 +25,22 @@ export type ChatMessage = {
 
 export type GatewayHandlers = {
   onStatus: (status: 'connecting' | 'online' | 'offline') => void;
-  onReady: (data: { you: Me; serverName: string; channels: Channel[]; users: PresenceUser[] }) => void;
+  onReady: (data: { you: Me; serverName: string; channels: Channel[]; users: PresenceUser[]; admin: boolean }) => void;
+  onChannels: (channels: Channel[]) => void;
+  onServerName: (name: string) => void;
   onPresence: (users: PresenceUser[]) => void;
   onChat: (msg: ChatMessage, nonce?: string) => void;
   onHistory: (data: { channel: string; before: number | null; messages: ChatMessage[]; hasMore: boolean }) => void;
   onTyping: (data: { channel: string; userId: string; name: string }) => void;
   onError: (code: string, nonce?: string) => void;
   onInvalidSession: () => void;
+  /** An admin kicked or banned this device. */
+  onRemoved: (reason: 'kicked' | 'banned') => void;
 };
+
+const CLOSE_SIGNED_OUT = 4003;
+const CLOSE_KICKED = 4004;
+const CLOSE_BANNED = 4005;
 
 // Presence + chat connection to the gateway. Reconnects with backoff and
 // re-authenticates; the app re-sends its voice state on every "ready".
@@ -88,6 +96,12 @@ export class GatewayClient {
         case 'typing':
           this.h.onTyping(msg);
           break;
+        case 'channels':
+          this.h.onChannels(msg.channels);
+          break;
+        case 'server':
+          this.h.onServerName(msg.serverName);
+          break;
         case 'error':
           if (msg.code === 'invalid_session') this.h.onInvalidSession();
           else this.h.onError(msg.code, msg.nonce);
@@ -99,9 +113,10 @@ export class GatewayClient {
       this.stopPing();
       if (this.ws === ws) this.ws = null;
       if (this.closed) return;
-      if (ev.code === 4003) {
+      if (ev.code === CLOSE_SIGNED_OUT || ev.code === CLOSE_KICKED || ev.code === CLOSE_BANNED) {
         this.closed = true;
-        this.h.onInvalidSession();
+        if (ev.code === CLOSE_SIGNED_OUT) this.h.onInvalidSession();
+        else this.h.onRemoved(ev.code === CLOSE_KICKED ? 'kicked' : 'banned');
         return;
       }
       this.h.onStatus('offline');

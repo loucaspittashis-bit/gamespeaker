@@ -112,3 +112,7 @@ export const LockIcon = make(
   </>,
 );
 export const ArrowRightIcon = make(<path d="M5 12h14M13 6l6 6-6 6" />);
+export const ChevronUpIcon = make(<path d="m18 15-6-6-6 6" />);
+export const ChevronDownIcon = make(<path d="m6 9 6 6 6-6" />);
+export const PlusIcon = make(<path d="M12 5v14M5 12h14" />);
+export const TrashIcon = make(<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6" />);

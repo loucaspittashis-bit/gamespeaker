@@ -1094,6 +1094,33 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
 .update-pill { border: 1px solid var(--neon-line-soft); background: var(--neon-softer); color: var(--neon); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 800; }
 .offline-bar { position: absolute; left: 50%; top: 66px; transform: translateX(-50%); z-index: 20; }
 
+.ib:disabled { opacity: 0.3; cursor: default; background: transparent; }
+.btn-plain:disabled { opacity: 0.45; cursor: default; }
+.btn-plain.sm, .btn-ghost.sm { padding: 6px 12px; font-size: 12px; }
+.btn-plain.danger { color: var(--red); }
+.btn-plain, .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+
+/* ---------- server admin ---------- */
+.adm-list { display: flex; flex-direction: column; }
+.adm-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid #1c1f25; }
+.adm-row:last-of-type { border-bottom: 0; }
+.adm-row .kind { color: var(--mute); display: inline-flex; width: 22px; justify-content: center; flex: none; }
+.adm-row .grow { flex: 1; min-width: 0; display: flex; gap: 8px; }
+.adm-row .field { padding: 8px 12px; font-size: 14px; }
+.adm-row .field.topic { color: var(--sub); }
+.adm-row .who { flex-direction: column; gap: 1px; }
+.adm-row .who b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adm-row .who small { color: var(--mute); font-size: 12px; }
+.adm-you { font-size: 12px; font-weight: 800; color: var(--mute); padding: 0 6px; }
+.adm-add { align-self: flex-start; margin-top: 6px; color: var(--neon); font-size: 13px; padding: 8px 10px; }
+.adm-field-label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.adm-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.adm-hint { font-size: 12px; color: var(--mute); margin-top: 10px; }
+.adm-hint code { font-size: 11px; color: var(--sub); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 5px; }
+.adm-error { color: var(--red); font-size: 13px; font-weight: 700; margin-top: 10px; }
+.adm-confirm { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: rgba(255, 107, 122, 0.06); border: 1px solid rgba(255, 107, 122, 0.25); font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
+.settings nav .group { padding: 16px 12px 8px; margin-top: 10px; border-top: 1px solid var(--line); }
+
 @media (max-width: 860px) {
   body { overflow: auto; }
   .app { flex-wrap: wrap; height: auto; }
@@ -1105,4 +1132,6 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
   .settings { flex-direction: column; overflow-y: auto; }
   .settings nav { justify-content: flex-start; padding: 24px 16px 12px; }
   .settings .content .in { padding: 24px 16px 60px; }
+  .adm-row { flex-wrap: wrap; }
+  .adm-row .grow { flex-basis: calc(100% - 140px); flex-wrap: wrap; }
 }

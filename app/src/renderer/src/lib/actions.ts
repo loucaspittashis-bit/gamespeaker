@@ -1,5 +1,5 @@
 import { app, setApp, toast, type PendingMessage } from '../state/store';
-import { ApiError, api, gatewaySocketUrl } from './api';
+import { ApiError, adminApi, api, gatewaySocketUrl, type Channel } from './api';
 import { GatewayClient, type ChatMessage } from './gateway';
 import { bridge } from './platform';
 import { settings, updateSettings } from './settings';
@@ -24,8 +24,8 @@ export async function logout(): Promise<void> {
   await leaveVoice({ silent: true });
   gateway?.close();
   gateway = null;
-  updateSettings({ session: null });
-  setApp({ phase: 'welcome', me: null, users: [], messages: {}, historyLoaded: {}, modal: null });
+  updateSettings({ session: null, adminToken: null, adminExpiresAt: 0 });
+  setApp({ phase: 'welcome', me: null, users: [], messages: {}, historyLoaded: {}, modal: null, adminAvailable: false });
 }
 
 export async function updateProfile(patch: { name?: string; color?: string }): Promise<void> {
@@ -69,13 +69,14 @@ function connectGateway(session: string): void {
   gateway = new GatewayClient(gatewaySocketUrl(), session, {
     onStatus: (gatewayStatus) => setApp({ gatewayStatus }),
 
-    onReady: ({ you, serverName, channels, users }) => {
+    onReady: ({ you, serverName, channels, users, admin }) => {
       const firstText = channels.find((c) => c.kind === 'text')?.id ?? '';
       setApp((s) => ({
         me: you,
         serverName,
         channels,
         users,
+        adminAvailable: Boolean(admin),
         textChannel: channels.some((c) => c.id === s.textChannel) ? s.textChannel : firstText,
       }));
       // Load recent history everywhere so unread dots are right from the start.
@@ -84,6 +85,10 @@ function connectGateway(session: string): void {
       for (const p of app().pending) gateway?.send({ t: 'chat', channel: p.channel, text: p.text, nonce: p.nonce });
       syncPresence();
     },
+
+    onChannels: (channels) => applyChannels(channels),
+
+    onServerName: (serverName) => setApp({ serverName }),
 
     onPresence: (users) => {
       setApp({ users });
@@ -127,8 +132,55 @@ function connectGateway(session: string): void {
       toast('Please sign in again', 'warn');
       void logout();
     },
+
+    onRemoved: (reason) => {
+      toast(reason === 'banned' ? 'An admin banned this device from the server' : 'An admin removed you from the server', 'warn');
+      void logout();
+    },
   });
   gateway.connect();
+}
+
+/** An admin changed the channel list: follow along if ours was renamed or removed. */
+function applyChannels(channels: Channel[]): void {
+  const s = app();
+  const isVoice = (id: string | null) => channels.some((c) => c.id === id && c.kind === 'voice');
+  const isText = (id: string) => channels.some((c) => c.id === id && c.kind === 'text');
+  if (s.voiceChannel && !isVoice(s.voiceChannel)) {
+    void leaveVoice({ silent: true });
+    toast('The voice channel you were in was deleted', 'warn');
+  }
+  setApp({
+    channels,
+    textChannel: isText(s.textChannel) ? s.textChannel : (channels.find((c) => c.kind === 'text')?.id ?? ''),
+    view: s.view === 'voice' && s.voiceChannel && !isVoice(s.voiceChannel) ? 'text' : s.view,
+  });
+  for (const c of channels) if (!s.historyLoaded[c.id]) gateway?.send({ t: 'history', channel: c.id, limit: 50 });
+}
+
+/**
+ * Changes the friends' password. The server signs everyone out, us included,
+ * so we sign straight back in with the new password and stay in voice.
+ */
+export async function changeServerPassword(password: string): Promise<void> {
+  const st = settings();
+  gateway?.close();
+  gateway = null;
+  try {
+    await adminApi.updateServer({ serverPassword: password });
+  } catch (err) {
+    if (st.session) connectGateway(st.session);
+    throw err;
+  }
+  const { session, user } = await api.login({
+    name: app().me?.name ?? st.nickname,
+    password,
+    deviceId: st.deviceId,
+    color: app().me?.color ?? st.avatarColor,
+  });
+  updateSettings({ session });
+  setApp({ me: user });
+  connectGateway(session);
 }
 
 function mergeById(a: ChatMessage[], b: ChatMessage[]): ChatMessage[] {

@@ -45,6 +45,7 @@ start() {
     cat > "$LOCAL/env" <<EOF
 SERVER_NAME="Gamespeaker (local)"
 SERVER_PASSWORD=local-test-password
+ADMIN_PASSWORD=local-admin-password
 LIVEKIT_API_KEY=APIlocal$(rand 8)
 LIVEKIT_API_SECRET=$(rand 48)
 SESSION_SECRET=$(rand 48)

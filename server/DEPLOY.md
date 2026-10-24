@@ -106,6 +106,10 @@ docker compose up -d --build
 docker compose ps
 ```
 
+The last line printed is your **admin password**. Keep it to yourself: in the app, open
+Settings > Server admin and type it to manage channels, the server name, the friends' password,
+and to kick or ban people.
+
 All three services should show `running` (the gateway shows `healthy` after about 30 seconds).
 Watch Caddy get the HTTPS certificate:
 
@@ -158,14 +162,20 @@ docker compose pull
 docker compose up -d --build
 ```
 
-**Change the password:** edit `SERVER_PASSWORD` in `.env`, then run `docker compose up -d`.
-Everyone is signed out and needs the new password.
+**Change channels, the server name or the friends' password:** use Settings > Server admin in
+the app. Changes apply to everyone straight away. Changing the password signs everyone out.
 
-**Change the channels:** set `CHANNELS` in `.env` to a JSON list, for example:
+These changes are saved on the server in `settings.json` (in the `gateway-data` volume) and take
+priority over `SERVER_NAME`, `SERVER_PASSWORD` and `CHANNELS` in `.env`. To go back to the `.env`
+values, delete that file and restart:
 
+```bash
+docker compose exec gateway rm /data/settings.json
+docker compose restart gateway
 ```
-CHANNELS=[{"id":"lobby","name":"Lobby","kind":"voice"},{"id":"general","name":"general","kind":"text"}]
-```
+
+**Forgot the admin password:** `grep ADMIN_PASSWORD .env`. To change it, edit that line and run
+`docker compose up -d`; anyone unlocked with the old one is locked again.
 
 **See logs:** `docker compose logs -f gateway` (or `livekit`, `caddy`).
 

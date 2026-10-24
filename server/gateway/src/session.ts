@@ -28,14 +28,18 @@ export function passwordEpoch(password: string, secret: string): string {
   return mac(`epoch:${password}`, secret).toString('base64url').slice(0, 16);
 }
 
-export function signSession(user: SessionUser, secret: string, epoch: string, now = Date.now()): string {
-  const iat = Math.floor(now / 1000);
-  const session: Session = { ...user, iat, exp: iat + SESSION_TTL_SEC, e: epoch };
-  const payload = b64(JSON.stringify(session));
+// Derived from the admin password; a different prefix keeps admin tokens and
+// sessions apart even if someone reuses the same password for both.
+export function adminEpoch(adminPassword: string, secret: string): string {
+  return mac(`admin-epoch:${adminPassword}`, secret).toString('base64url').slice(0, 16);
+}
+
+function sign(data: object, secret: string): string {
+  const payload = b64(JSON.stringify(data));
   return `${payload}.${mac(payload, secret).toString('base64url')}`;
 }
 
-export function verifySession(token: unknown, secret: string, epoch: string, now = Date.now()): Session | null {
+function verify(token: unknown, secret: string, now: number): Record<string, unknown> | null {
   if (typeof token !== 'string' || token.length > 2048) return null;
   const dot = token.indexOf('.');
   if (dot <= 0) return null;
@@ -43,14 +47,39 @@ export function verifySession(token: unknown, secret: string, epoch: string, now
   const given = Buffer.from(token.slice(dot + 1), 'base64url');
   const expected = mac(payload, secret);
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
-
-  let session: Session;
+  let data: Record<string, unknown>;
   try {
-    session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
   } catch {
     return null;
   }
-  if (session.e !== epoch) return null;
-  if (typeof session.exp !== 'number' || session.exp * 1000 < now) return null;
-  return session;
+  if (typeof data.exp !== 'number' || data.exp * 1000 < now) return null;
+  return data;
+}
+
+export function signSession(user: SessionUser, secret: string, epoch: string, now = Date.now()): string {
+  const iat = Math.floor(now / 1000);
+  const session: Session = { ...user, iat, exp: iat + SESSION_TTL_SEC, e: epoch };
+  return sign(session, secret);
+}
+
+export function verifySession(token: unknown, secret: string, epoch: string, now = Date.now()): Session | null {
+  const data = verify(token, secret, now);
+  if (!data || data.k !== undefined || data.e !== epoch) return null;
+  if (typeof data.sub !== 'string' || typeof data.name !== 'string' || typeof data.color !== 'string') return null;
+  return data as unknown as Session;
+}
+
+export const ADMIN_TTL_SEC = 12 * 60 * 60;
+
+/** A short-lived token that unlocks the admin API for one device. */
+export function signAdmin(sub: string, secret: string, epoch: string, now = Date.now()): { token: string; exp: number } {
+  const iat = Math.floor(now / 1000);
+  const exp = iat + ADMIN_TTL_SEC;
+  return { token: sign({ k: 'admin', sub, iat, exp, e: epoch }, secret), exp };
+}
+
+export function verifyAdmin(token: unknown, sub: string, secret: string, epoch: string, now = Date.now()): boolean {
+  const data = verify(token, secret, now);
+  return Boolean(data && data.k === 'admin' && data.sub === sub && data.e === epoch);
 }

@@ -54,6 +54,12 @@ export type Settings = {
 
   // desktop
   closeToTray: boolean;
+
+  /** Join/leave/live chimes and the message blip. */
+  soundEffects: boolean;
+  /** Admin screen unlock, valid until adminExpiresAt (ms). */
+  adminToken: string | null;
+  adminExpiresAt: number;
 };
 
 export const AVATAR_COLORS = ['#b3a6ff', '#ffb27a', '#6ee7c8', '#ff9ec4', '#8cc8ff', '#f5d76e'];
@@ -89,6 +95,9 @@ const defaults: Settings = {
   showStreamStats: true,
   lastRead: {},
   closeToTray: true,
+  soundEffects: true,
+  adminToken: null,
+  adminExpiresAt: 0,
 };
 
 type SettingsStore = Settings & {

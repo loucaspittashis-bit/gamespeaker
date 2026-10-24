@@ -1,11 +1,13 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useApp, setApp, type SettingsSection } from '../state/store';
 import { logout, updateProfile } from '../lib/actions';
 import { listDevices } from '../lib/mic';
 import { bridge, defaultServerUrl, isDesktop } from '../lib/platform';
 import { AVATAR_COLORS, useSettings, updateSettings, type NoiseLevel } from '../lib/settings';
+import { sounds } from '../lib/sounds';
 import { NEON_PRESETS, neonName } from '../lib/theme';
 import { setMicTest } from '../lib/voice';
+import { AdminSettings } from './AdminSettings';
 import { Avatar } from './Avatar';
 import { GLOW_OPTIONS } from './NeonPicker';
 import { CloseIcon } from './Icons';
@@ -407,13 +409,24 @@ function AppSection() {
   return (
     <>
       <h1>App</h1>
-      <p className="lead">Startup, the tray, and where the server lives.</p>
-      {isDesktop && (
-        <div className="card" style={{ padding: '8px 18px' }}>
-          <Toggle on={launch} onChange={(v) => { setLaunch(v); void bridge?.setLaunchAtLogin(v); }} title="Start with your computer" desc="Opens quietly in the tray so friends can reach you." />
-          <Toggle on={s.closeToTray} onChange={(v) => { updateSettings({ closeToTray: v }); void bridge?.setCloseToTray(v); }} title="Close to tray" desc="Closing the window keeps you in voice. Quit from the tray icon." />
-        </div>
-      )}
+      <p className="lead">Startup, sounds, the tray, and where the server lives.</p>
+      <div className="card" style={{ padding: '8px 18px' }}>
+        <Toggle
+          on={s.soundEffects}
+          onChange={(v) => {
+            updateSettings({ soundEffects: v });
+            if (v) sounds.join();
+          }}
+          title="Sound effects"
+          desc="Soft chimes when people join or leave your voice channel, go live, or message you."
+        />
+        {isDesktop && (
+          <>
+            <Toggle on={launch} onChange={(v) => { setLaunch(v); void bridge?.setLaunchAtLogin(v); }} title="Start with your computer" desc="Opens quietly in the tray so friends can reach you." />
+            <Toggle on={s.closeToTray} onChange={(v) => { updateSettings({ closeToTray: v }); void bridge?.setCloseToTray(v); }} title="Close to tray" desc="Closing the window keeps you in voice. Quit from the tray icon." />
+          </>
+        )}
+      </div>
       <Card label="Server address">
         <div style={{ display: 'flex', gap: 10 }}>
           <input className="field" value={server} placeholder={defaultServerUrl()} onChange={(e) => setServer(e.target.value)} />
@@ -444,28 +457,34 @@ function AppSection() {
   );
 }
 
-const SECTIONS: { key: SettingsSection; label: string; render: () => ReactNode }[] = [
+const SECTIONS: { key: SettingsSection; label: string; render: () => ReactNode; admin?: boolean }[] = [
   { key: 'profile', label: 'My profile', render: () => <Profile /> },
   { key: 'appearance', label: 'Appearance', render: () => <Appearance /> },
   { key: 'voice', label: 'Voice & audio', render: () => <Voice /> },
   { key: 'keys', label: 'Keybinds', render: () => <Keys /> },
   { key: 'stream', label: 'Streaming', render: () => <Streaming /> },
   { key: 'app', label: 'App', render: () => <AppSection /> },
+  { key: 'admin', label: 'Server admin', render: () => <AdminSettings />, admin: true },
 ];
 
 export function SettingsModal() {
   const section = useApp((s) => s.settingsSection);
   const update = useApp((s) => s.update);
-  const current = SECTIONS.find((x) => x.key === section) ?? SECTIONS[2]!;
+  const adminAvailable = useApp((s) => s.adminAvailable);
+  const sections = SECTIONS.filter((x) => !x.admin || adminAvailable);
+  const current = sections.find((x) => x.key === section) ?? SECTIONS[2]!;
   return (
     <div className="settings" role="dialog" aria-modal="true" aria-label="Settings">
       <nav aria-label="Settings sections">
         <div className="in">
           <div className="label">Settings</div>
-          {SECTIONS.map((x) => (
-            <button key={x.key} aria-current={x.key === current.key ? 'page' : undefined} onClick={() => setApp({ settingsSection: x.key })}>
-              {x.label}
-            </button>
+          {sections.map((x) => (
+            <Fragment key={x.key}>
+              {x.admin && <div className="label group">Server</div>}
+              <button aria-current={x.key === current.key ? 'page' : undefined} onClick={() => setApp({ settingsSection: x.key })}>
+                {x.label}
+              </button>
+            </Fragment>
           ))}
           <div className="ver">
             <b>Gamespeaker {bridge?.version ?? 'web'}</b>

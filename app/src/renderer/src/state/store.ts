@@ -29,7 +29,7 @@ export type PendingMessage = { nonce: string; channel: string; text: string; ts:
 
 export type Toast = { id: number; text: string; tone: 'neon' | 'warn' };
 
-export type SettingsSection = 'profile' | 'appearance' | 'voice' | 'keys' | 'stream' | 'app';
+export type SettingsSection = 'profile' | 'appearance' | 'voice' | 'keys' | 'stream' | 'app' | 'admin';
 
 export type AppState = {
   phase: 'welcome' | 'ready';
@@ -38,6 +38,8 @@ export type AppState = {
   serverName: string;
   channels: Channel[];
   users: PresenceUser[];
+  /** The server has an admin password set, so Settings shows Server admin. */
+  adminAvailable: boolean;
 
   messages: Record<string, ChatMessage[]>;
   pending: PendingMessage[];
@@ -76,6 +78,7 @@ export const useApp = create<AppState>()(() => ({
   serverName: 'Gamespeaker',
   channels: [],
   users: [],
+  adminAvailable: false,
 
   messages: {},
   pending: [],

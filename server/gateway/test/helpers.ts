@@ -6,6 +6,7 @@ import { DEFAULT_CHANNELS, type Config } from '../src/config.ts';
 import { createGateway, type Gateway } from '../src/server.ts';
 
 export const PASSWORD = 'correct horse battery staple';
+export const ADMIN_PASSWORD = 'admin password for tests';
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -14,8 +15,11 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     dataDir: mkdtempSync(join(tmpdir(), 'gs-gateway-')),
     serverName: 'Test Server',
     serverPassword: PASSWORD,
+    adminPassword: ADMIN_PASSWORD,
     sessionSecret: 'test-session-secret-that-is-long-enough-1234',
     livekitUrl: 'wss://example.test',
+    // Nothing listens here: kick/close-room calls fail fast and are ignored.
+    livekitHost: 'http://127.0.0.1:9',
     livekitApiKey: 'APItestkey',
     livekitApiSecret: 'test-livekit-secret-that-is-long-enough-123456',
     channels: DEFAULT_CHANNELS,
@@ -42,13 +46,14 @@ export async function start(overrides: Partial<Config> = {}): Promise<Running> {
 export async function api(
   base: string,
   path: string,
-  opts: { method?: string; body?: unknown; session?: string; headers?: Record<string, string> } = {},
+  opts: { method?: string; body?: unknown; session?: string; admin?: string; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; body: any; headers: Headers }> {
   const res = await fetch(base + path, {
     method: opts.method ?? (opts.body === undefined ? 'GET' : 'POST'),
     headers: {
       ...(opts.body === undefined ? {} : { 'content-type': 'application/json' }),
       ...(opts.session ? { authorization: `Bearer ${opts.session}` } : {}),
+      ...(opts.admin ? { 'x-admin-token': opts.admin } : {}),
       ...opts.headers,
     },
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),

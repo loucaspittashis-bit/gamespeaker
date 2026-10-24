@@ -229,11 +229,15 @@ function wireRoom(r: Room): void {
       sounds.leave();
       refresh();
     })
-    .on(RoomEvent.TrackPublished, (_pub, p) => {
+    .on(RoomEvent.TrackPublished, (pub, p) => {
+      if (pub.source === Track.Source.ScreenShare) sounds.streamStart();
       applySubscriptions(p);
       refresh();
     })
-    .on(RoomEvent.TrackUnpublished, () => refresh())
+    .on(RoomEvent.TrackUnpublished, (pub) => {
+      if (pub.source === Track.Source.ScreenShare) sounds.streamStop();
+      refresh();
+    })
     .on(RoomEvent.TrackSubscribed, (track) => {
       attachAudio(track);
       applyVolumes();
