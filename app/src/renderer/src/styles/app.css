@@ -593,8 +593,10 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
 .stage video, .tile video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
 .stage.fit-cover video { object-fit: cover; }
 .glass { background: rgba(10, 11, 14, 0.58); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.08); color: #fff; }
-.ov-tl { position: absolute; left: 14px; top: 14px; display: flex; align-items: center; gap: 8px; }
-.ov-tr { position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 6px; }
+.ov-top { position: absolute; left: 14px; right: 14px; top: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.ov-tl { display: flex; align-items: center; gap: 8px; min-width: 0; pointer-events: auto; }
+.ov-tr { display: flex; align-items: center; gap: 6px; flex: none; margin-left: auto; pointer-events: auto; }
+.ov-tl .live-pill { flex: none; }
 .ov-chip { position: relative; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
 .ov-chip.quality { font-family: var(--display); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
 .svol { position: relative; display: inline-flex; align-items: center; }
@@ -609,11 +611,12 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
 .svol:hover .svol-slider, .svol:focus-within .svol-slider { opacity: 1; visibility: visible; transition: opacity 0.12s, visibility 0s; }
 .svol-slider input { width: 120px; }
 .svol-slider b { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
-.ov-label { font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 999px; }
+.ov-label { font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 999px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctl { opacity: 0; transition: opacity 0.15s; }
 .stage:hover .ctl, .tile:hover .ctl, .stage:focus-within .ctl { opacity: 1; }
 .ov-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px; display: flex; align-items: center; gap: 8px; }
-.stats { font-family: var(--display); font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.stats { font-family: var(--display); font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 999px; font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-bottom .svol { flex: none; }
 .ov {
   width: 36px;
   height: 36px;
@@ -635,7 +638,7 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
   font-weight: 700;
 }
 
-.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-content: center; }
+.grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; align-content: safe center; }
 .ptile {
   aspect-ratio: 16 / 9;
   border: 1px solid var(--line);
@@ -1295,8 +1298,8 @@ button.person { width: 100%; border: 0; color: inherit; text-align: left; font: 
 .st-row select { flex: 1; min-width: 0; }
 
 /* ---------- chat pictures, mentions ---------- */
-.pics { display: grid; grid-template-columns: repeat(2, max-content); gap: 6px; margin-top: 6px; }
-.pics.one { grid-template-columns: max-content; }
+.pics { display: grid; grid-template-columns: repeat(2, minmax(0, max-content)); gap: 6px; margin-top: 6px; max-width: 100%; }
+.pics.one { grid-template-columns: minmax(0, max-content); }
 .pic { padding: 0; border: 0; background: var(--panel-2); border-radius: 12px; overflow: hidden; cursor: zoom-in; display: block; line-height: 0; }
 .pic img { display: block; max-width: 100%; height: auto; object-fit: cover; }
 .msg.pending .pic, .msg.failed .pic { opacity: 0.6; }
@@ -1354,8 +1357,6 @@ button.person { width: 100%; border: 0; color: inherit; text-align: left; font: 
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .split > .stage { min-width: 0; min-height: 0; }
 .split.rows { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-.split .ov-tl { right: 150px; min-width: 0; }
-.split .ov-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split .stop-watch span { display: none; }
 .split { position: relative; }
 .split.full { gap: 4px; padding: 0; background: #000; }
@@ -1378,7 +1379,15 @@ button.person { width: 100%; border: 0; color: inherit; text-align: left; font: 
 .tile-actions .watch { position: static; background: var(--neon); color: #0a0b0e; }
 .tile-actions .tile-side { background: rgba(10, 11, 14, 0.7); color: #fff; border: 1px solid rgba(255, 255, 255, 0.15); }
 .ov.stop-watch { width: auto; padding: 0 12px 0 9px; gap: 6px; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; }
-.ptile.is-live { box-shadow: inset 0 0 0 1px rgba(255, 59, 107, 0.45); flex-direction: column; gap: 12px; }
+.ptile.is-live { box-shadow: inset 0 0 0 1px rgba(255, 59, 107, 0.45); flex-direction: column; gap: 12px; padding-bottom: 40px; }
+/* Smaller live tiles drop the picture, then the title, so the Watch button never runs into the name tag. */
+.ptile { container-type: inline-size; }
+@container (max-width: 420px) {
+  .ptile.is-live > .av, .ptile.is-live > .av-wrap { display: none; }
+}
+@container (max-width: 300px) {
+  .ptile-live .t { display: none; }
+}
 .ptile-live { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 12px; max-width: 100%; }
 .ptile-live .t { font-size: 13px; font-weight: 700; color: var(--sub); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ptile-live .btn-neon { padding: 8px 16px; font-size: 13px; }
@@ -1391,6 +1400,57 @@ button.person { width: 100%; border: 0; color: inherit; text-align: left; font: 
 .source .thumb.no-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--panel-2); }
 .source .thumb.no-preview .big-icon { width: 48px; height: 48px; object-fit: contain; position: static; }
 .source .thumb.no-preview small { font-size: 11px; color: var(--mute); }
+
+.chat-open { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; }
+.dk.on { background: var(--neon-soft); color: var(--neon); }
+/* The dock never wraps or spills over its neighbours: in a narrow middle the labels go, the icons stay. */
+.dock-wrap { min-width: 0; container-type: inline-size; }
+.dock { max-width: 100%; }
+.dock .go { flex: none; white-space: nowrap; }
+.dock .go svg { flex: none; }
+.dock .golive-split .go.game { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+@container (max-width: 520px) {
+  .dock .go-label { display: none; }
+  .dock .go { padding: 0 14px; }
+  .dock .golive-split .go.more { padding: 0 9px; }
+}
+/* Narrow streams: buttons lose their words before anything overlaps. */
+.stage { container-type: inline-size; }
+@container (max-width: 560px) {
+  .ov-bottom .ov.stop-watch { padding: 0; width: 36px; justify-content: center; }
+  .ov-bottom .ov.stop-watch span { display: none; }
+}
+@container (max-width: 380px) {
+  .ov-bottom .stats { display: none; }
+}
+/* Voice header: the counts go first so the buttons on the right stay in reach. */
+.voice-head { container-type: inline-size; }
+.voice-head > * { flex: none; }
+.voice-head h1 { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.voice-head > .spacer { flex: 1; }
+@container (max-width: 520px) {
+  .voice-head .chip:not(.neon) { display: none; }
+}
+@container (max-width: 380px) {
+  .voice-head .chip.neon { display: none; }
+}
+@container (max-width: 330px) {
+  .dock { gap: 5px; padding: 5px; }
+  .dock .divider, .dock .watch-count { display: none; }
+  .dock .go { padding: 0 11px; }
+  .dock .dk, .dock .go { height: 38px; }
+  .dock .dk { width: 38px; }
+}
+.show-panels { position: absolute; left: 16px; top: 14px; z-index: 6; display: inline-flex; align-items: center; gap: 8px; }
+.show-panels .keycap { font-size: 11px; padding: 1px 6px; }
+.back-to-voice {
+  display: flex; align-items: center; gap: 8px; margin: 10px 20px 0; padding: 9px 14px; border-radius: 12px;
+  border: 1px solid var(--neon-line-soft); background: var(--neon-softer); color: var(--text-2); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.back-to-voice svg { color: var(--neon); flex: none; }
+.back-to-voice span:first-of-type { flex: 1; }
+.back-to-voice .go { color: var(--neon); font-weight: 800; }
+.back-to-voice:hover { border-color: var(--neon-line); }
 
 @media (max-width: 860px) {
   body { overflow: auto; }

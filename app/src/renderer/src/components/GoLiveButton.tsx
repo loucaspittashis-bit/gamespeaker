@@ -28,19 +28,20 @@ export function GoLiveButton({ variant }: { variant: 'side' | 'dock' }) {
       <button
         className={`${cls} on`}
         title={watching ? watchers.map((u) => u.name).join(', ') + ' watching' : 'Nobody watching yet'}
+        aria-label="End stream"
         onClick={() => void stopStream()}
       >
         <ScreenIcon size={variant === 'side' ? 's' : undefined} />
-        End stream
+        <span className="go-label">End stream</span>
         <span className="watch-count"><EyeIcon size="xs" />{watching}</span>
       </button>
     );
   }
   if (!game) {
     return (
-      <button className={cls} disabled={blocked} onClick={openPicker}>
+      <button className={cls} disabled={blocked} aria-label="Go Live" onClick={openPicker}>
         <ScreenIcon size={variant === 'side' ? 's' : undefined} />
-        Go Live
+        <span className="go-label">Go Live</span>
       </button>
     );
   }
@@ -50,6 +51,7 @@ export function GoLiveButton({ variant }: { variant: 'side' | 'dock' }) {
         className={`${cls} game`}
         disabled={blocked || starting}
         title={`Stream ${game.name} now`}
+        aria-label={`Stream ${game.name}`}
         onClick={async () => {
           setStarting(true);
           await streamGame(game);
@@ -57,7 +59,7 @@ export function GoLiveButton({ variant }: { variant: 'side' | 'dock' }) {
         }}
       >
         <ScreenIcon size={variant === 'side' ? 's' : undefined} />
-        <span className="gname">{starting ? 'Starting…' : `Stream ${game.name}`}</span>
+        <span className="gname go-label">{starting ? 'Starting…' : `Stream ${game.name}`}</span>
       </button>
       <button className={`${cls} more`} disabled={blocked} title="Choose something else to stream" aria-label="Choose something else to stream" onClick={openPicker}>
         <ChevronDownIcon size="s" />

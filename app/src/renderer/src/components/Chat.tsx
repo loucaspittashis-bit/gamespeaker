@@ -8,7 +8,7 @@ import { mentionQuery, mentionsMe, splitMentions } from '../lib/mentions';
 import { Avatar } from './Avatar';
 import { openProfile } from './ProfileCard';
 import { STATUS_LABEL } from './StatusEditor';
-import { ChatIcon, CloseIcon, HashIcon, ImageIcon, SendIcon } from './Icons';
+import { ChatIcon, CloseIcon, HashIcon, ImageIcon, SendIcon, SpeakerIcon } from './Icons';
 
 const GROUP_MS = 5 * 60 * 1000;
 
@@ -388,6 +388,7 @@ function Composer({ channel, placeholder, wide }: { channel: string; placeholder
 export function TextView() {
   const channel = useApp((s) => s.textChannel);
   const info = useApp((s) => s.channels.find((c) => c.id === s.textChannel));
+  const voice = useApp((s) => s.channels.find((c) => c.id === s.voiceChannel));
   if (!info) return <div className="connecting">Loading…</div>;
   return (
     <section className="chat" aria-label={`#${info.name}`}>
@@ -396,6 +397,14 @@ export function TextView() {
         <h1>{info.name}</h1>
         {info.topic && <><span className="sep" /><span className="topic">{info.topic}</span></>}
       </header>
+      {/* Still in voice while reading a text channel: make the way back obvious. */}
+      {voice && (
+        <button className="back-to-voice" onClick={() => setApp({ view: 'voice' })}>
+          <SpeakerIcon size="s" />
+          <span>You're in <b>{voice.name}</b></span>
+          <span className="go">Back to voice →</span>
+        </button>
+      )}
       <Messages channel={channel} wide intro={{ name: info.name }} />
       <Typing channel={channel} />
       <Composer channel={channel} placeholder={`Message #${info.name}`} wide />

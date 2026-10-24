@@ -9,7 +9,7 @@ import { NeonPicker } from './NeonPicker';
 import { openUserMenu } from './Sidebar';
 import { TrackVideo, popOut, useStreamStats } from './TrackVideo';
 import {
-  ChatIcon, CloseIcon, EyeIcon, SplitIcon, SplitRowsIcon, SwapIcon, HeadphonesIcon, HeadphonesOffIcon, MaximizeIcon, MicIcon, MicOffIcon, MinimizeIcon,
+  ChatIcon, CloseIcon, EyeIcon, PanelsIcon, SplitIcon, SplitRowsIcon, SwapIcon, HeadphonesIcon, HeadphonesOffIcon, MaximizeIcon, MicIcon, MicOffIcon, MinimizeIcon,
   PaletteIcon, PhoneOffIcon, PopoutIcon, SignalIcon, SpeakerIcon, SpeakerOffIcon,
 } from './Icons';
 
@@ -21,10 +21,14 @@ function Header() {
   const pings = useApp((s) => s.pings);
   const popover = useApp((s) => s.popover);
   const chatOpen = useApp((s) => s.chatOpen);
+  const me = useApp((s) => s.me?.id);
+  const messages = useApp((s) => (s.voiceChannel ? s.messages[s.voiceChannel] : undefined));
+  const lastRead = useSettings((s) => (voiceChannel ? s.lastRead[voiceChannel] ?? 0 : 0));
+  const unread = chatOpen ? 0 : (messages ?? []).filter((m) => m.id > lastRead && m.userId !== me).length;
   const name = channels.find((c) => c.id === voiceChannel)?.name ?? '';
   const ping = pings.at(-1);
   return (
-    <header className="head">
+    <header className="head voice-head">
       <span className="ic"><SpeakerIcon /></span>
       <h1>{name}</h1>
       <span className="chip">{members.length} in voice</span>
@@ -45,9 +49,18 @@ function Header() {
       >
         <PaletteIcon />
       </button>
-      <button className={`ib${chatOpen ? ' on' : ''}`} title={chatOpen ? 'Hide chat' : 'Show chat'} aria-label={chatOpen ? 'Hide chat' : 'Show chat'} onClick={() => setApp({ chatOpen: !chatOpen })}>
-        <ChatIcon />
-      </button>
+      {chatOpen ? (
+        <button className="ib on" title="Hide chat" aria-label="Hide chat" onClick={() => setApp({ chatOpen: false })}>
+          <ChatIcon />
+        </button>
+      ) : (
+        // Closed chat gets a real button, with how many messages you've missed.
+        <button className="btn-soft chat-open" onClick={() => setApp({ chatOpen: true })}>
+          <ChatIcon size="s" />
+          Chat
+          {unread > 0 && <span className="ping-count">{unread > 99 ? '99+' : unread}</span>}
+        </button>
+      )}
       {popover === 'neon' && <NeonPicker />}
     </header>
   );
@@ -149,17 +162,20 @@ function FocusedStream({ stream }: { stream: StreamInfo }) {
       }}
     >
       {stream.track ? <TrackVideo track={stream.track} /> : <div className="empty-stage">Loading stream…</div>}
-      <div className="ov-tl">
-        <span className="live-pill big">LIVE</span>
-        <span className="glass ov-label">{stream.isLocal ? `Your stream · ${stream.title}` : `${stream.name} · ${stream.title}`}</span>
-      </div>
-      <div className="ov-tr">
-        {qualityShort && (
-          <span className="glass ov-chip quality" title={qualityRest.length ? `${qualityShort} · ${qualityRest.join(' · ')}` : qualityShort}>
-            {qualityShort}
-          </span>
-        )}
-        <Viewers streamId={stream.id} />
+      {/* One row, so a long title shortens itself instead of running under the badges. */}
+      <div className="ov-top">
+        <div className="ov-tl">
+          <span className="live-pill big">LIVE</span>
+          <span className="glass ov-label">{stream.isLocal ? `Your stream · ${stream.title}` : `${stream.name} · ${stream.title}`}</span>
+        </div>
+        <div className="ov-tr">
+          {qualityShort && (
+            <span className="glass ov-chip quality" title={qualityRest.length ? `${qualityShort} · ${qualityRest.join(' · ')}` : qualityShort}>
+              {qualityShort}
+            </span>
+          )}
+          <Viewers streamId={stream.id} />
+        </div>
       </div>
       {/* Fast clicks on these buttons shouldn't count as a double-click on the stream. */}
       <div className="ov-bottom ctl" onDoubleClick={(e) => e.stopPropagation()}>
@@ -297,8 +313,13 @@ function Dock() {
         <button className={`dk${deafened ? ' bad' : ''}`} title={deafened ? 'Undeafen' : 'Deafen (voices off, streams keep their sound)'} aria-label={deafened ? 'Undeafen' : 'Deafen'} onClick={() => setDeafened(!deafened)}>
           {deafened ? <HeadphonesOffIcon /> : <HeadphonesIcon />}
         </button>
-        <button className="dk" title={fullscreen ? 'Show panels' : 'Theater mode'} aria-label={fullscreen ? 'Show panels' : 'Theater mode'} onClick={() => setApp({ fullscreen: !fullscreen })}>
-          {fullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
+        <button
+          className={`dk${fullscreen ? ' on' : ''}`}
+          title={fullscreen ? 'Show the side panels again' : 'Theater mode: hide the side panels'}
+          aria-label={fullscreen ? 'Show side panels' : 'Theater mode'}
+          onClick={() => setApp({ fullscreen: !fullscreen })}
+        >
+          <PanelsIcon />
         </button>
         <button className="dk red" title="Leave voice" aria-label="Leave voice" onClick={() => void leaveVoice()}>
           <PhoneOffIcon />
@@ -374,6 +395,13 @@ export function VoiceView() {
   return (
     <section className="chat" aria-label="Voice channel">
       {!fullscreen && <Header />}
+      {fullscreen && (
+        <button className="btn-soft show-panels" onClick={() => setApp({ fullscreen: false })}>
+          <PanelsIcon size="s" />
+          Show panels
+          <span className="keycap">Esc</span>
+        </button>
+      )}
       <div className="stagebox">
         {status === 'connecting' ? (
           <div className="connecting"><span className="pulse" style={{ color: 'var(--neon)' }} />Joining voice…</div>

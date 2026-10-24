@@ -118,6 +118,13 @@ export const SplitIcon = make(
     <path d="M12 4v16" />
   </>,
 );
+/** Side panels around a middle area: theater mode hides them. */
+export const PanelsIcon = make(
+  <>
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="M8 4v16M16 4v16" />
+  </>,
+);
 export const SplitRowsIcon = make(
   <>
     <rect x="3" y="4" width="18" height="16" rx="2" />
