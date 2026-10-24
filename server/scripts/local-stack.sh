@@ -73,7 +73,7 @@ EOF
 
   mkdir -p "$LOCAL/caddy"
   XDG_DATA_HOME="$SERVER_DIR/$LOCAL/caddy" XDG_CONFIG_HOME="$SERVER_DIR/$LOCAL/caddy" \
-    DOMAIN="http://localhost:$CADDY_PORT" ACME_EMAIL=dev@example.com WEB_ROOT="$SERVER_DIR/web" \
+    DOMAIN="http://localhost:$CADDY_PORT" WEB_ROOT="$SERVER_DIR/web" \
     caddy run --config Caddyfile --adapter caddyfile > "$LOCAL/caddy.log" 2>&1 &
   echo $! > "$LOCAL/caddy.pid"
 

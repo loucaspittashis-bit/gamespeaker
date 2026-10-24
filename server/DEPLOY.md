@@ -96,7 +96,6 @@ nano .env
 In `.env`, set:
 
 - `DOMAIN` to your DuckDNS address, for example `ourcrew.duckdns.org` (no `https://`)
-- `ACME_EMAIL` to your email (Let's Encrypt only uses it for certificate warnings)
 - `SERVER_PASSWORD` to the password you'll give your friends
 
 Save the file (Ctrl+O, Enter, Ctrl+X), then generate the secrets and start everything:

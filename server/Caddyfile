@@ -1,7 +1,4 @@
-{
-	email {$ACME_EMAIL}
-}
-
+# HTTPS certificates come from Let's Encrypt automatically and renew on their own.
 {$DOMAIN} {
 	encode zstd gzip
 
