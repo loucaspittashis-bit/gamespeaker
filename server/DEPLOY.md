@@ -1,44 +1,66 @@
 # Deploying the Gamespeaker server
 
-This puts the server on a Hetzner VPS so it runs 24/7: voice and video (LiveKit), login,
-presence and chat (gateway), and HTTPS (Caddy). Setup takes about 20 minutes and costs a few
-euros a month.
+This puts the server on a VPS so it runs 24/7: voice and video (LiveKit), login, presence and
+chat (gateway), and HTTPS (Caddy). Setup takes about 20 minutes.
+
+We use **OVHcloud VPS-2 in London**: about 62 ms from Cyprus, unlimited traffic, 1 Gbps, about
+€10/month with VAT and no commitment. Any Ubuntu 24.04 VPS works; Hetzner steps are included as
+an alternative.
 
 ## What you need
 
-- A Hetzner Cloud account: <https://console.hetzner.cloud>
+- An OVHcloud account, registered as an **individual**: <https://www.ovhcloud.com/en-ie/vps/>
 - An SSH key on your computer. Check with `ls ~/.ssh/id_ed25519.pub`, or make one with
   `ssh-keygen -t ed25519`.
 - A free DuckDNS account: <https://www.duckdns.org>
 
+In the commands below, replace `YOUR_SERVER_IP` with the server's IPv4 address.
+
 ## 1. Create the server
 
-In the Hetzner Console, open your project and click **Add server**:
+### OVHcloud (what we use)
+
+On the VPS page, click **Configure** on **VPS-2** and choose:
 
 | Setting | Choose |
 |---|---|
-| Location | **Nuremberg** (or Falkenstein; both are about the same from Cyprus) |
-| Image | **Ubuntu 24.04** (or a newer LTS) |
-| Type | **Shared vCPU → x86 → CX23** (2 vCPU, 4 GB). Resize later in one click if needed. |
-| Networking | Public IPv4 and IPv6 |
-| SSH keys | Add your public key (the contents of `~/.ssh/id_ed25519.pub`) |
-| Firewalls | Create one with the rules below |
-| Cloud config | Paste the whole of [`cloud-init.yaml`](cloud-init.yaml) |
-| Name | `gamespeaker` |
+| Commitment | **No commitment** |
+| Location | **Europe → United Kingdom (Erith)**. France (Gravelines/Strasbourg) is about 5 ms faster when in stock. |
+| Image | **Distribution only → Ubuntu → Version 24.04** |
+| Options | None. Daily backup is already included. |
 
-**Firewall rules (inbound):**
+After paying, OVH emails the server's **IPv4 address** and the login for user `ubuntu`. Put your
+SSH key on it once (it asks for the password from OVH's email):
+
+```bash
+ssh-copy-id ubuntu@YOUR_SERVER_IP
+```
+
+Then run the setup script. It installs Docker, turns on automatic security updates (with a
+05:00 reboot window), allows SSH keys only, and opens just the ports listed below:
+
+```bash
+scp server/scripts/setup-server.sh ubuntu@YOUR_SERVER_IP:
+ssh ubuntu@YOUR_SERVER_IP 'sudo sh setup-server.sh'
+```
+
+### Hetzner (alternative)
+
+In the Hetzner Console click **Add server**: Nuremberg, Ubuntu 24.04, Shared vCPU → x86 → CX23,
+your SSH key, a firewall with the ports below, and paste [`cloud-init.yaml`](cloud-init.yaml)
+into **Cloud config** (it does the same as the setup script). Log in as `root` instead of
+`ubuntu` in the steps below.
+
+### Ports the server opens
 
 | Protocol | Port | What it's for |
 |---|---|---|
-| TCP | 22 | SSH (you can restrict this to your home IP) |
+| TCP | 22 | SSH |
 | TCP | 80 | Let's Encrypt certificate checks, redirect to HTTPS |
 | TCP | 443 | The app: website, login, chat, voice signalling |
 | UDP | 443 | HTTP/3 (faster page loads, optional) |
 | TCP | 7881 | Voice/video fallback for networks that block UDP |
 | UDP | 7882 | Voice and video |
-
-Click **Create & Buy now** and copy the server's **IPv4 address**. Give the cloud config about
-3 minutes to finish installing Docker and updates.
 
 ## 2. Point your domain at it
 
@@ -59,13 +81,13 @@ cd app && npm ci && npm run build:web && cd ..
 Then copy everything up:
 
 ```bash
-rsync -av --exclude node_modules --exclude .local --exclude e2e server/ root@YOUR_SERVER_IP:/opt/gamespeaker/
+rsync -av --exclude node_modules --exclude .local --exclude e2e server/ ubuntu@YOUR_SERVER_IP:/opt/gamespeaker/
 ```
 
 ## 4. Configure and start
 
 ```bash
-ssh root@YOUR_SERVER_IP
+ssh ubuntu@YOUR_SERVER_IP
 cd /opt/gamespeaker
 cp .env.example .env
 nano .env
@@ -121,6 +143,7 @@ These happen automatically:
 - **Security updates:** Ubuntu installs them nightly and reboots at 05:00 server time when a
   kernel update needs it. The app is back within a minute.
 - **HTTPS certificates:** Caddy renews them before they expire.
+- **Backups:** OVH takes a daily backup of the whole server.
 
 Set up the one thing that isn't automatic: a free uptime monitor that alerts your phone if the
 server goes down. On <https://uptimerobot.com>, add an **HTTP(s)** monitor for
@@ -147,26 +170,25 @@ CHANNELS=[{"id":"lobby","name":"Lobby","kind":"voice"},{"id":"general","name":"g
 
 **See logs:** `docker compose logs -f gateway` (or `livekit`, `caddy`).
 
-**Back up the chat history:** it lives in the `gateway-data` volume.
+**Back up just the chat history:** it lives in the `gateway-data` volume.
 
 ```bash
 docker run --rm -v gamespeaker_gateway-data:/data -v "$PWD":/backup alpine tar czf /backup/chat-backup.tgz -C /data .
 ```
 
-You can also turn on Hetzner's automatic backups for the server (+20% of the server price).
-
 ## Bandwidth
 
-Hetzner includes about 20 TB of traffic a month. A 4K60 stream uses about 16 GB per viewer per
-hour (1440p60 about 7 GB, 1080p60 about 3.5 GB). Friends watching a small tile only download a
-small preview, so normal use stays well inside the allowance.
+OVH's VPS-2 has unlimited traffic on a 1 Gbps port. A 1440p60 stream uses about 7 GB per viewer
+per hour (1080p60 about 3.5 GB), and 6 people all watching 1440p60 need about 110 Mbps. Friends
+watching a small tile only download a small preview.
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
 | The site doesn't load, or there's a certificate error | DuckDNS isn't pointing at the server yet, or TCP 80/443 is closed. Check `docker compose logs caddy`. |
-| Login and chat work, but voice never connects | UDP 7882 and TCP 7881 are blocked. Check both the Hetzner firewall and `ufw status` on the server. |
+| Login and chat work, but voice never connects | UDP 7882 and TCP 7881 are blocked. Check `sudo ufw status` on the server (and the Hetzner firewall, if you use Hetzner). |
 | Voice works on most networks but not one | That network blocks UDP. LiveKit falls back to TCP 7881 automatically, at slightly higher latency. |
 | "Too many attempts" when logging in | 10 wrong passwords from one address in 10 minutes. Wait 10 minutes. |
 | The gateway keeps restarting | A required `.env` value is missing. `docker compose logs gateway` says which one. |
+| `permission denied` running `docker` | Log out and back in once after the setup script, so your user joins the `docker` group. |
