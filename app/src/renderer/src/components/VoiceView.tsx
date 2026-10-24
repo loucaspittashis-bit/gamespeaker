@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useApp, setApp, type StreamInfo, type VoiceMember } from '../state/store';
 import { useSettings, updateSettings } from '../lib/settings';
 import { leaveVoice, setDeafened, setFocus, setMuted, stopWatching, watchSideBySide } from '../lib/voice';
@@ -9,7 +9,7 @@ import { NeonPicker } from './NeonPicker';
 import { openUserMenu } from './Sidebar';
 import { TrackVideo, popOut, useStreamStats } from './TrackVideo';
 import {
-  ChatIcon, CloseIcon, EyeIcon, SplitIcon, HeadphonesIcon, HeadphonesOffIcon, MaximizeIcon, MicIcon, MicOffIcon, MinimizeIcon,
+  ChatIcon, CloseIcon, EyeIcon, SplitIcon, SplitRowsIcon, SwapIcon, HeadphonesIcon, HeadphonesOffIcon, MaximizeIcon, MicIcon, MicOffIcon, MinimizeIcon,
   PaletteIcon, PhoneOffIcon, PopoutIcon, SignalIcon, SpeakerIcon, SpeakerOffIcon,
 } from './Icons';
 
@@ -127,16 +127,27 @@ function Viewers({ streamId }: { streamId: string }) {
   );
 }
 
+/** In split view, fullscreen means both streams together. */
+const SplitFullscreen = createContext<{ full: boolean; toggle: () => void } | null>(null);
+
 function FocusedStream({ stream }: { stream: StreamInfo }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { full, toggle: toggleFullscreen } = useFullscreen(ref);
+  const own = useFullscreen(ref);
+  const { full, toggle: toggleFullscreen } = useContext(SplitFullscreen) ?? own;
   const showStats = useSettings((s) => s.showStreamStats);
   const stats = useStreamStats(stream.track, showStats);
   // "1440p60 · AV1 · 16 Mbps": the size and frame rate go top right, the rest on hover.
   const [qualityShort, ...qualityRest] = stream.quality.split(' · ');
 
   return (
-    <div className="stage" ref={ref} onDoubleClick={toggleFullscreen}>
+    <div
+      className="stage"
+      ref={ref}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        toggleFullscreen();
+      }}
+    >
       {stream.track ? <TrackVideo track={stream.track} /> : <div className="empty-stage">Loading stream…</div>}
       <div className="ov-tl">
         <span className="live-pill big">LIVE</span>
@@ -229,6 +240,7 @@ function StreamTile({ stream }: { stream: StreamInfo }) {
 
 function PersonTile({ m, big }: { m: VoiceMember; big?: boolean }) {
   const live = useApp((s) => s.streams.find((x) => x.id === m.id));
+  const deaf = useApp((s) => (m.isLocal ? s.deafened : Boolean(s.users.find((u) => u.id === m.id)?.deafened)));
   if (big) {
     return (
       <div className={`ptile${m.speaking ? ' speaking' : ''}${live ? ' is-live' : ''}`} onClick={(e) => openProfile(e, m.id)} onContextMenu={(e) => openUserMenu(e, m.id)}>
@@ -251,7 +263,8 @@ function PersonTile({ m, big }: { m: VoiceMember; big?: boolean }) {
         )}
         <span className="glass name-tag">
           {m.name}{m.isLocal ? ' (you)' : ''}
-          {m.micMuted && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
+          {(m.micMuted || deaf) && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
+          {deaf && <span className="flag"><HeadphonesOffIcon size="xs" label="Deafened" /></span>}
         </span>
       </div>
     );
@@ -261,7 +274,8 @@ function PersonTile({ m, big }: { m: VoiceMember; big?: boolean }) {
       <Avatar id={m.id} name={m.name} color={m.color} size={50} />
       <span className="glass name-tag">
         {m.isLocal ? 'You' : m.name}
-        {m.micMuted && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
+        {(m.micMuted || deaf) && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
+        {deaf && <span className="flag"><HeadphonesOffIcon size="xs" label="Deafened" /></span>}
       </span>
     </div>
   );
@@ -280,7 +294,7 @@ function Dock() {
         <button className={`dk${off ? ' bad' : ''}`} title={off ? 'Unmute' : 'Mute'} aria-label={off ? 'Unmute' : 'Mute'} onClick={() => setMuted(!off)}>
           {off ? <MicOffIcon /> : <MicIcon />}
         </button>
-        <button className={`dk${deafened ? ' bad' : ''}`} title={deafened ? 'Undeafen' : 'Deafen'} aria-label={deafened ? 'Undeafen' : 'Deafen'} onClick={() => setDeafened(!deafened)}>
+        <button className={`dk${deafened ? ' bad' : ''}`} title={deafened ? 'Undeafen' : 'Deafen (voices off, streams keep their sound)'} aria-label={deafened ? 'Undeafen' : 'Deafen'} onClick={() => setDeafened(!deafened)}>
           {deafened ? <HeadphonesOffIcon /> : <HeadphonesIcon />}
         </button>
         <button className="dk" title={fullscreen ? 'Show panels' : 'Theater mode'} aria-label={fullscreen ? 'Show panels' : 'Theater mode'} onClick={() => setApp({ fullscreen: !fullscreen })}>
@@ -300,7 +314,9 @@ function Dock() {
  */
 function Split({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [rows, setRows] = useState(false);
+  const layout = useSettings((s) => s.splitLayout);
+  const [autoRows, setAutoRows] = useState(false);
+  const fullscreen = useFullscreen(ref);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -308,14 +324,41 @@ function Split({ children }: { children: ReactNode }) {
       const { width: w, height: h } = el.getBoundingClientRect();
       const sideBySide = Math.min(w / 2, (h * 16) / 9);
       const stacked = Math.min(w, ((h / 2) * 16) / 9);
-      setRows(stacked > sideBySide);
+      setAutoRows(stacked > sideBySide);
     };
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     fit();
     return () => ro.disconnect();
   }, []);
-  return <div ref={ref} className={`split${rows ? ' rows' : ''}`}>{children}</div>;
+  const rows = layout === 'rows' || (layout === 'auto' && autoRows);
+  const choices = [
+    { key: 'auto', label: 'Auto', icon: null },
+    { key: 'columns', label: 'Side by side', icon: <SplitIcon size="s" /> },
+    { key: 'rows', label: 'One above the other', icon: <SplitRowsIcon size="s" /> },
+  ] as const;
+  return (
+    <SplitFullscreen.Provider value={fullscreen}>
+      <div ref={ref} className={`split${rows ? ' rows' : ''}${fullscreen.full ? ' full' : ''}`} onDoubleClick={fullscreen.toggle}>
+        {children}
+        {/* Hover to arrange; works in fullscreen too. */}
+        <div className="glass split-bar" onDoubleClick={(e) => e.stopPropagation()}>
+          {choices.map((c) => (
+            <button key={c.key} aria-pressed={layout === c.key} title={c.label} aria-label={c.label} onClick={() => updateSettings({ splitLayout: c.key })}>
+              {c.icon ?? 'Auto'}
+            </button>
+          ))}
+          <span className="sep" />
+          <button title="Swap the two streams" aria-label="Swap the two streams" onClick={() => setApp((s) => ({ focus: s.focus2, focus2: s.focus }))}>
+            <SwapIcon size="s" />
+          </button>
+          <button title={fullscreen.full ? 'Exit fullscreen (Esc)' : 'Both streams fullscreen'} aria-label={fullscreen.full ? 'Exit fullscreen' : 'Both streams fullscreen'} onClick={fullscreen.toggle}>
+            {fullscreen.full ? <MinimizeIcon size="s" /> : <MaximizeIcon size="s" />}
+          </button>
+        </div>
+      </div>
+    </SplitFullscreen.Provider>
+  );
 }
 
 export function VoiceView() {

@@ -118,6 +118,13 @@ export const SplitIcon = make(
     <path d="M12 4v16" />
   </>,
 );
+export const SplitRowsIcon = make(
+  <>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M3 12h18" />
+  </>,
+);
+export const SwapIcon = make(<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7" />);
 export const ImageIcon = make(
   <>
     <rect x="3" y="3" width="18" height="18" rx="3" />

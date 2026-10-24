@@ -64,6 +64,8 @@ export type Settings = {
   showPlaying: boolean;
   /** Programs marked "Not a game" (lowercase file names). */
   ignoredGames: string[];
+  /** Two streams at once: pick the arrangement, or let the window shape decide. */
+  splitLayout: 'auto' | 'columns' | 'rows';
   /** Your chosen status. "online" goes idle by itself when you're away. */
   status: 'online' | 'idle' | 'dnd';
   customStatus: { emoji: string; text: string; until: number | null } | null;
@@ -111,6 +113,7 @@ const defaults: Settings = {
   detectGames: true,
   showPlaying: true,
   ignoredGames: [],
+  splitLayout: 'auto',
   status: 'online',
   customStatus: null,
   mentionNotifications: true,

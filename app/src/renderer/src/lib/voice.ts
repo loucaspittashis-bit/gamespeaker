@@ -199,43 +199,54 @@ export function volumeGain(percent: number): number {
 
 // Remote audio plays through our own AudioContext so volumes can go above 100%.
 let mixContext: AudioContext | null = null;
-const limiters = new WeakMap<RemoteAudioTrack, DynamicsCompressorNode>();
+const boosts = new WeakMap<RemoteAudioTrack, { gain: GainNode; limiter: DynamicsCompressorNode }>();
 
-/** While someone is boosted, a limiter in front of their gain keeps loud moments from crackling. */
-function limitBoost(track: RemoteAudioTrack | undefined, gain: number): void {
-  if (!track || !mixContext) return;
-  let limiter = limiters.get(track);
-  if (gain <= 1.05) {
-    if (limiter) {
+/**
+ * Plays one person's voice or stream sound at `volume` (1 = as sent). Above 1
+ * the boost happens in our own gain, followed by a limiter just under full
+ * scale, so loud moments can't crackle. (A compressor with a low threshold
+ * adds its own make-up gain; one at -1 dB barely does.)
+ */
+function playAt(p: RemoteParticipant, source: Track.Source.Microphone | Track.Source.ScreenShareAudio, volume: number): void {
+  const track = p.getTrackPublication(source)?.track as RemoteAudioTrack | undefined;
+  const ctx = mixContext;
+  const boost = track ? boosts.get(track) : undefined;
+  if (!track || !ctx || volume <= 1) {
+    if (track && boost) {
       track.setWebAudioPlugins([]);
-      limiters.delete(track);
+      boosts.delete(track);
     }
+    p.setVolume(volume, source);
     return;
   }
-  if (!limiter) {
-    limiter = mixContext.createDynamicsCompressor();
-    limiter.knee.value = 3;
+  let b = boost;
+  if (!b) {
+    const gain = ctx.createGain();
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -1;
+    limiter.knee.value = 0;
     limiter.ratio.value = 20;
-    limiter.attack.value = 0.002;
-    limiter.release.value = 0.2;
-    limiters.set(track, limiter);
-    track.setWebAudioPlugins([limiter]);
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    b = { gain, limiter };
+    boosts.set(track, b);
+    track.setWebAudioPlugins([gain, limiter]);
   }
-  // Peaks that would pass full scale after the boost get held just under it.
-  limiter.threshold.value = Math.max(-40, -20 * Math.log10(gain) - 1);
+  b.gain.gain.setTargetAtTime(volume, ctx.currentTime, 0.05);
+  p.setVolume(1, source);
 }
 
 export function applyVolumes(): void {
   if (!room) return;
   const s = settings();
-  const master = app().deafened ? 0 : volumeGain(s.outputVolume);
+  const output = volumeGain(s.outputVolume);
+  // Deafen silences people's voices only; streams keep their sound (each has its own mute).
+  const voices = app().deafened ? 0 : output;
   room.remoteParticipants.forEach((p) => {
-    const voice = (s.userMuted[p.identity] ? 0 : volumeGain(s.userVolumes[p.identity] ?? 100)) * master;
-    const stream = volumeGain(s.streamVolumes[p.identity] ?? 100) * master;
-    p.setVolume(voice, Track.Source.Microphone);
-    p.setVolume(stream, Track.Source.ScreenShareAudio);
-    limitBoost(p.getTrackPublication(Track.Source.Microphone)?.track as RemoteAudioTrack | undefined, voice);
-    limitBoost(p.getTrackPublication(Track.Source.ScreenShareAudio)?.track as RemoteAudioTrack | undefined, stream);
+    const voice = (s.userMuted[p.identity] ? 0 : volumeGain(s.userVolumes[p.identity] ?? 100)) * voices;
+    const stream = volumeGain(s.streamVolumes[p.identity] ?? 100) * output;
+    playAt(p, Track.Source.Microphone, voice);
+    playAt(p, Track.Source.ScreenShareAudio, stream);
   });
 }
 

@@ -1357,6 +1357,19 @@ button.person { width: 100%; border: 0; color: inherit; text-align: left; font: 
 .split .ov-tl { right: 150px; min-width: 0; }
 .split .ov-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split .stop-watch span { display: none; }
+.split { position: relative; }
+.split.full { gap: 4px; padding: 0; background: #000; }
+.split.full > .stage { border-radius: 0; border: 0; }
+.split-bar {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4;
+  display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px;
+  opacity: 0; transition: opacity 0.15s ease 0.3s;
+}
+.split:hover .split-bar, .split-bar:focus-within { opacity: 1; transition-delay: 0s; }
+.split-bar button { border: 0; background: transparent; color: #fff; height: 30px; min-width: 30px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.split-bar button:hover { background: rgba(255, 255, 255, 0.12); }
+.split-bar button[aria-pressed='true'] { background: var(--neon); color: #0a0b0e; }
+.split-bar .sep { width: 1px; height: 18px; background: rgba(255, 255, 255, 0.2); margin: 0 3px; }
 .split .ov.stop-watch { padding: 0; width: 38px; justify-content: center; }
 .stream-tile { cursor: pointer; }
 .stream-tile .name-tag { top: 7px; bottom: auto; }

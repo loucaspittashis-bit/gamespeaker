@@ -80,7 +80,8 @@ function VoiceChannels() {
                       <span className="n">{m.name}{m.isLocal ? ' (you)' : ''}</span>
                       {m.speaking && <span className="eq" aria-hidden="true"><span /><span /><span /></span>}
                       {userMuted[m.id] && <span className="flag"><SpeakerOffIcon size="xs" label="Muted by you" /></span>}
-                      {m.micMuted && !deaf && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
+                      {/* Deafened means muted too: show both. */}
+                      {(m.micMuted || deaf) && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
                       {deaf && <span className="flag"><HeadphonesOffIcon size="xs" label="Deafened" /></span>}
                       {m.streaming && (
                         <span
@@ -265,7 +266,7 @@ function UserCard() {
       <button className={`ib${off ? ' bad' : ''}`} title={off ? 'Unmute' : 'Mute'} aria-label={off ? 'Unmute' : 'Mute'} onClick={() => setMuted(!off)}>
         {off ? <MicOffIcon /> : <MicIcon />}
       </button>
-      <button className={`ib${deafened ? ' bad' : ''}`} title={deafened ? 'Undeafen' : 'Deafen'} aria-label={deafened ? 'Undeafen' : 'Deafen'} onClick={() => setDeafened(!deafened)}>
+      <button className={`ib${deafened ? ' bad' : ''}`} title={deafened ? 'Undeafen' : 'Deafen (voices off, streams keep their sound)'} aria-label={deafened ? 'Undeafen' : 'Deafen'} onClick={() => setDeafened(!deafened)}>
         {deafened ? <HeadphonesOffIcon /> : <HeadphonesIcon />}
       </button>
       <button className="ib" title="Settings" aria-label="Settings" onClick={() => setApp({ modal: 'settings', settingsSection: 'voice', popover: null })}>
