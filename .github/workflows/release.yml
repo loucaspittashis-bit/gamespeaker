@@ -52,6 +52,16 @@ jobs:
       - run: npm run typecheck
       - run: npx electron-vite build
 
+      # Create the release first: if it doesn't exist, electron-builder's parallel
+      # uploads can each create one and you end up with duplicate releases.
+      - name: Create the GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$RELEASE_OWNER/$RELEASE_REPO" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --repo "$RELEASE_OWNER/$RELEASE_REPO" \
+              --title "${GITHUB_REF_NAME#v}" --notes-file ../.github/release-notes.md
+
       # bash, not PowerShell: PowerShell splits "-c.publish.owner=..." at the dot.
       - name: Package and publish
         shell: bash
