@@ -52,8 +52,10 @@ jobs:
       - run: npm run typecheck
       - run: npx electron-vite build
 
+      # bash, not PowerShell: PowerShell splits "-c.publish.owner=..." at the dot.
       - name: Package and publish
-        run: npx electron-builder --win --publish always -c.publish.owner=$env:RELEASE_OWNER -c.publish.repo=$env:RELEASE_REPO
+        shell: bash
+        run: npx electron-builder --win --publish always "-c.publish.owner=$RELEASE_OWNER" "-c.publish.repo=$RELEASE_REPO"
 
       - uses: actions/upload-artifact@v4
         with:
