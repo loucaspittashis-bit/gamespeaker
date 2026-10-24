@@ -7,6 +7,7 @@ import {
   type LocalTrackPublication,
   type LocalVideoTrack,
   type Participant,
+  type RemoteAudioTrack,
   type RemoteParticipant,
   type RemoteTrack,
   type RemoteVideoTrack,
@@ -179,15 +180,55 @@ function applyAllSubscriptions(): void {
   room?.remoteParticipants.forEach(applySubscriptions);
 }
 
+/**
+ * Volume slider (0–200%) to gain. Below 100% it simply turns down; above,
+ * each step counts for more so a boost is clearly heard: 200% is +12 dB
+ * (4×), roughly twice as loud.
+ */
+export function volumeGain(percent: number): number {
+  if (percent <= 100) return Math.max(0, percent) / 100;
+  return 10 ** (((Math.min(percent, 200) - 100) / 100) * (12 / 20));
+}
+
+// Remote audio plays through our own AudioContext so volumes can go above 100%.
+let mixContext: AudioContext | null = null;
+const limiters = new WeakMap<RemoteAudioTrack, DynamicsCompressorNode>();
+
+/** While someone is boosted, a limiter in front of their gain keeps loud moments from crackling. */
+function limitBoost(track: RemoteAudioTrack | undefined, gain: number): void {
+  if (!track || !mixContext) return;
+  let limiter = limiters.get(track);
+  if (gain <= 1.05) {
+    if (limiter) {
+      track.setWebAudioPlugins([]);
+      limiters.delete(track);
+    }
+    return;
+  }
+  if (!limiter) {
+    limiter = mixContext.createDynamicsCompressor();
+    limiter.knee.value = 3;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.2;
+    limiters.set(track, limiter);
+    track.setWebAudioPlugins([limiter]);
+  }
+  // Peaks that would pass full scale after the boost get held just under it.
+  limiter.threshold.value = Math.max(-40, -20 * Math.log10(gain) - 1);
+}
+
 export function applyVolumes(): void {
   if (!room) return;
   const s = settings();
-  const master = app().deafened ? 0 : s.outputVolume / 100;
+  const master = app().deafened ? 0 : volumeGain(s.outputVolume);
   room.remoteParticipants.forEach((p) => {
-    const voice = s.userMuted[p.identity] ? 0 : (s.userVolumes[p.identity] ?? 100) / 100;
-    const stream = (s.streamVolumes[p.identity] ?? 100) / 100;
-    p.setVolume(voice * master, Track.Source.Microphone);
-    p.setVolume(stream * master, Track.Source.ScreenShareAudio);
+    const voice = (s.userMuted[p.identity] ? 0 : volumeGain(s.userVolumes[p.identity] ?? 100)) * master;
+    const stream = volumeGain(s.streamVolumes[p.identity] ?? 100) * master;
+    p.setVolume(voice, Track.Source.Microphone);
+    p.setVolume(stream, Track.Source.ScreenShareAudio);
+    limitBoost(p.getTrackPublication(Track.Source.Microphone)?.track as RemoteAudioTrack | undefined, voice);
+    limitBoost(p.getTrackPublication(Track.Source.ScreenShareAudio)?.track as RemoteAudioTrack | undefined, stream);
   });
 }
 
@@ -284,10 +325,12 @@ export async function joinVoice(channelId: string): Promise<void> {
   setApp({ voiceChannel: channelId, voiceStatus: 'connecting', view: 'voice', members: [], streams: [], focus: null, fullscreen: false, pings: [] });
   notify();
 
+  void mixContext?.close().catch(() => {});
+  mixContext = new AudioContext({ latencyHint: 'interactive' });
   const r = new Room({
     adaptiveStream: true,
     dynacast: true,
-    webAudioMix: true,
+    webAudioMix: { audioContext: mixContext },
     disconnectOnPageLeave: true,
   });
   room = r;
@@ -366,6 +409,8 @@ export async function leaveVoice(opts: { silent?: boolean } = {}): Promise<void>
   await r.disconnect(false).catch(() => {});
   for (const els of audioEls.values()) els.forEach((el) => el.remove());
   audioEls.clear();
+  void mixContext?.close().catch(() => {});
+  mixContext = null;
   setApp((s) => ({
     voiceChannel: null,
     voiceStatus: 'idle',

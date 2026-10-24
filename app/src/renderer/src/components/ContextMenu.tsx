@@ -48,6 +48,7 @@ export function ContextMenu() {
             onChange={(e) => updateSettings({ userVolumes: { ...useSettings.getState().userVolumes, [id]: Number(e.target.value) } })}
             onDoubleClick={() => updateSettings({ userVolumes: { ...useSettings.getState().userVolumes, [id]: 100 } })}
           />
+          {volume > 100 && <small className="boost-hint">Boosted · 200% is about twice as loud</small>}
         </div>
         <button className="mi" role="menuitemcheckbox" aria-checked={muted} onClick={() => updateSettings({ userMuted: { ...useSettings.getState().userMuted, [id]: !muted } })}>
           <span>Mute for me</span>
@@ -59,15 +60,20 @@ export function ContextMenu() {
               <span>Watch stream</span>
               <EyeIcon size="s" />
             </button>
-            <button
-              className="mi"
-              role="menuitemcheckbox"
-              aria-checked={streamVolume === 0}
-              onClick={() => updateSettings({ streamVolumes: { ...useSettings.getState().streamVolumes, [id]: streamVolume === 0 ? 100 : 0 } })}
-            >
-              <span>Mute stream sound</span>
-              <span className={`check${streamVolume === 0 ? ' on' : ''}`}>{streamVolume === 0 && <CheckIcon size="xs" />}</span>
-            </button>
+            <div className="vol">
+              <label className="label" htmlFor="stream-vol"><span>Stream volume</span><span>{streamVolume}%</span></label>
+              <input
+                id="stream-vol"
+                type="range"
+                min={0}
+                max={200}
+                step={1}
+                value={streamVolume}
+                onChange={(e) => updateSettings({ streamVolumes: { ...useSettings.getState().streamVolumes, [id]: Number(e.target.value) } })}
+                onDoubleClick={() => updateSettings({ streamVolumes: { ...useSettings.getState().streamVolumes, [id]: 100 } })}
+              />
+              <small className="boost-hint">Their game sound only, not their voice</small>
+            </div>
           </>
         )}
         <div className="hr" />

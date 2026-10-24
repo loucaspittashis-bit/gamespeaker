@@ -34,6 +34,7 @@ const bridge: GamespeakerBridge = {
 
   onUpdateStatus: (cb) => listen('update:status', cb),
   installUpdate: () => ipcRenderer.invoke('update:install'),
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
 
   setTrayState: (state) => ipcRenderer.send('tray:state', state),
   onTrayAction: (cb) => listen('tray:action', cb),

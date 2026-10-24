@@ -589,7 +589,14 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
 .stage.fit-cover video { object-fit: cover; }
 .glass { background: rgba(10, 11, 14, 0.58); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.08); color: #fff; }
 .ov-tl { position: absolute; left: 14px; top: 14px; display: flex; align-items: center; gap: 8px; }
-.ov-tr { position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.ov-tr { position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 6px; }
+.ov-chip { position: relative; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.ov-chip.quality { font-family: var(--display); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.svol { position: relative; display: inline-flex; align-items: center; }
+.svol-slider { position: absolute; right: calc(100% + 6px); top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; opacity: 0; pointer-events: none; transition: opacity 0.12s; }
+.svol:hover .svol-slider, .svol:focus-within .svol-slider { opacity: 1; pointer-events: auto; }
+.svol-slider input { width: 120px; }
+.svol-slider b { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
 .ov-label { font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 999px; }
 .ctl { opacity: 0; transition: opacity 0.15s; }
 .stage:hover .ctl, .tile:hover .ctl, .stage:focus-within .ctl { opacity: 1; }
@@ -662,6 +669,7 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
 .tile:hover { transform: translateY(-2px); }
 .tile > .av, .tile > .av-wrap { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); }
 .tile .name-tag { left: 7px; bottom: 7px; font-size: 12px; padding: 2px 8px; }
+.tile-quality { position: absolute; right: 7px; top: 7px; font-family: var(--display); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
 .tile .watch {
   position: absolute;
   right: 7px;
@@ -825,6 +833,7 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
 .ctx .vol { padding: 6px 10px 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; margin: 0 2px 6px; }
 .ctx .vol label { display: flex; justify-content: space-between; padding-top: 4px; margin-bottom: 8px; }
 .ctx .vol label span:last-child { color: var(--neon); font-variant-numeric: tabular-nums; }
+.ctx .vol .boost-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--mute); }
 .mi {
   background: transparent;
   border: 0;

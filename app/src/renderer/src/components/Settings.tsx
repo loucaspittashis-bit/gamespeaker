@@ -433,9 +433,15 @@ function AppSection() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ flex: 1 }}>
               Gamecoms {bridge?.version} ·{' '}
-              {update.state === 'ready' ? `version ${update.version} is ready` : update.state === 'downloading' ? `downloading (${update.percent}%)` : update.state === 'error' ? 'could not check for updates' : 'up to date'}
+              {update.state === 'ready' ? `version ${update.version} is ready` : update.state === 'downloading' ? `downloading (${update.percent}%)` : update.state === 'error' ? 'could not check for updates' : update.state === 'checking' ? 'checking for updates…' : 'up to date'}
             </span>
-            {update.state === 'ready' && <button className="btn-neon" onClick={() => void bridge?.installUpdate()}>Restart to update</button>}
+            {update.state === 'ready' ? (
+              <button className="btn-neon" onClick={() => void bridge?.installUpdate()}>Restart to update</button>
+            ) : (
+              <button className="btn-plain" disabled={update.state === 'checking' || update.state === 'downloading'} onClick={() => void bridge?.checkForUpdates()}>
+                {update.state === 'checking' ? 'Checking…' : 'Check for updates'}
+              </button>
+            )}
           </div>
         </Card>
       )}

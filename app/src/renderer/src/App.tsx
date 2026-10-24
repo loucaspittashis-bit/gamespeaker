@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useApp, setApp } from './state/store';
+import { useApp, setApp, toast } from './state/store';
 import { startSession } from './lib/actions';
 import { bridge, isDesktop, isMac } from './lib/platform';
 import { settings, useSettings } from './lib/settings';
@@ -93,7 +93,12 @@ export function App() {
   useEffect(() => {
     if (settings().session) startSession();
     void bridge?.setCloseToTray(settings().closeToTray);
-    const offUpdate = bridge?.onUpdateStatus((update) => setApp({ update }));
+    const offUpdate = bridge?.onUpdateStatus((update) => {
+      if (update.state === 'ready' && useApp.getState().update.state !== 'ready') {
+        toast(`Version ${update.version} is ready. Click "Update ready" at the top to restart.`);
+      }
+      setApp({ update });
+    });
 
     const onKey = (e: KeyboardEvent) => {
       const s = useApp.getState();

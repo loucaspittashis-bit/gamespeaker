@@ -62,6 +62,8 @@ export interface GamespeakerBridge {
 
   onUpdateStatus(cb: (status: UpdateStatus) => void): () => void;
   installUpdate(): Promise<void>;
+  /** Look for a new version now (Settings > App). */
+  checkForUpdates(): Promise<void>;
 
   setTrayState(state: { muted: boolean; deafened: boolean; inVoice: boolean }): void;
   onTrayAction(cb: (action: 'toggle-mute' | 'toggle-deafen' | 'disconnect') => void): () => void;

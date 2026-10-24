@@ -68,12 +68,50 @@ function useFullscreen(ref: RefObject<HTMLElement | null>) {
   return { full, toggle };
 }
 
+/** The stream's sound: click to mute, hover for a 0–200% slider. */
+function StreamVolume({ id }: { id: string }) {
+  const volume = useSettings((s) => s.streamVolumes[id] ?? 100);
+  const [before, setBefore] = useState(100);
+  const set = (v: number) => updateSettings({ streamVolumes: { ...useSettings.getState().streamVolumes, [id]: v } });
+  const off = volume === 0;
+  return (
+    <span className="svol">
+      <span className="glass svol-slider">
+        <input
+          type="range"
+          min={0}
+          max={200}
+          value={volume}
+          aria-label="Stream volume"
+          onChange={(e) => set(Number(e.target.value))}
+          onDoubleClick={() => set(100)}
+        />
+        <b>{volume}%</b>
+      </span>
+      <button
+        className="ov glass"
+        title={off ? 'Unmute stream sound' : 'Mute stream sound'}
+        aria-label={off ? 'Unmute stream sound' : 'Mute stream sound'}
+        onClick={() => {
+          if (off) set(before || 100);
+          else {
+            setBefore(volume);
+            set(0);
+          }
+        }}
+      >
+        {off ? <SpeakerOffIcon /> : <SpeakerIcon />}
+      </button>
+    </span>
+  );
+}
+
 /** Who has this stream on screen; the names show on hover. */
 function Viewers({ streamId }: { streamId: string }) {
   const users = useApp((s) => s.users);
   const viewers = users.filter((u) => u.watching === streamId && u.id !== streamId);
   return (
-    <div className="glass ov-tr viewers" tabIndex={0} aria-label={`${viewers.length} watching`}>
+    <div className="glass ov-chip viewers" tabIndex={0} aria-label={`${viewers.length} watching`}>
       <EyeIcon size="xs" />
       {viewers.length}
       <div className="viewer-list" role="tooltip">
@@ -93,14 +131,9 @@ function FocusedStream({ stream }: { stream: StreamInfo }) {
   const ref = useRef<HTMLDivElement>(null);
   const { full, toggle: toggleFullscreen } = useFullscreen(ref);
   const showStats = useSettings((s) => s.showStreamStats);
-  const streamVolume = useSettings((s) => s.streamVolumes[stream.id] ?? 100);
   const stats = useStreamStats(stream.track, showStats);
-  const soundOff = streamVolume === 0;
-
-  const toggleSound = () => {
-    const v = { ...useSettings.getState().streamVolumes, [stream.id]: soundOff ? 100 : 0 };
-    updateSettings({ streamVolumes: v });
-  };
+  // "1440p60 · AV1 · 16 Mbps": the size and frame rate go top right, the rest on hover.
+  const [qualityShort, ...qualityRest] = stream.quality.split(' · ');
 
   return (
     <div className="stage" ref={ref} onDoubleClick={toggleFullscreen}>
@@ -109,16 +142,19 @@ function FocusedStream({ stream }: { stream: StreamInfo }) {
         <span className="live-pill big">LIVE</span>
         <span className="glass ov-label">{stream.isLocal ? `Your stream · ${stream.title}` : `${stream.name} · ${stream.title}`}</span>
       </div>
-      <Viewers streamId={stream.id} />
+      <div className="ov-tr">
+        {qualityShort && (
+          <span className="glass ov-chip quality" title={qualityRest.length ? `${qualityShort} · ${qualityRest.join(' · ')}` : qualityShort}>
+            {qualityShort}
+          </span>
+        )}
+        <Viewers streamId={stream.id} />
+      </div>
       {/* Fast clicks on these buttons shouldn't count as a double-click on the stream. */}
       <div className="ov-bottom ctl" onDoubleClick={(e) => e.stopPropagation()}>
         {(stats || stream.quality) && <span className="glass stats">{stats ?? stream.quality}</span>}
         <span className="spacer" />
-        {!stream.isLocal && (
-          <button className="ov glass" title={soundOff ? 'Unmute stream sound' : 'Mute stream sound'} aria-label={soundOff ? 'Unmute stream sound' : 'Mute stream sound'} onClick={toggleSound}>
-            {soundOff ? <SpeakerOffIcon /> : <SpeakerIcon />}
-          </button>
-        )}
+        {!stream.isLocal && <StreamVolume id={stream.id} />}
         {stream.track && (
           <button className="ov glass" title="Pop out" aria-label="Pop out stream" onClick={() => popOut(stream.track!, stream.title)}>
             <PopoutIcon />
@@ -148,6 +184,7 @@ function StreamTile({ stream }: { stream: StreamInfo }) {
     >
       <TrackVideo track={stream.track} />
       <span className="glass name-tag"><span className="live-pill" style={{ fontSize: 9, padding: '1px 5px' }}>LIVE</span>{stream.isLocal ? 'You' : stream.name}</span>
+      {stream.quality && <span className="glass tile-quality">{stream.quality.split(' · ')[0]}</span>}
       <span className="watch ctl">Watch</span>
     </button>
   );
