@@ -13,6 +13,7 @@ import { SettingsFile, type Ban } from './settings.ts';
 import type { Attachment } from './store.ts';
 import { MAX_IMAGE_SIDE, MEDIA_NAME, MediaStore, sniffImage } from './media.ts';
 import { MAX_BIO_CHARS, ProfileStore, type ProfilePatch } from './profiles.ts';
+import { appVersion, isOlder } from './version.ts';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_CHAT_CHARS = 2000;
@@ -30,6 +31,10 @@ const MAX_ATTACHMENTS = 4;
 export const CLOSE_SIGNED_OUT = 4003; // session no longer valid (password changed)
 export const CLOSE_KICKED = 4004; // removed by an admin
 export const CLOSE_BANNED = 4005; // banned by an admin
+
+// Old apps show this after "Couldn't join voice:"; newer ones update by themselves instead.
+export const UPDATE_REQUIRED =
+  'Gamecoms needs an update. Click "Update ready" at the top if you see it, or quit Gamecoms from its tray icon (by the clock) and open it again.';
 
 class HttpError extends Error {
   status: number;
@@ -287,7 +292,7 @@ export function createGateway(config: Config): Gateway {
     }
 
     if (req.method === 'GET' && path === '/api/config') {
-      sendJson(res, 200, { name: serverName, channels, livekitUrl: config.livekitUrl, admin: Boolean(adminEp) });
+      sendJson(res, 200, { name: serverName, channels, livekitUrl: config.livekitUrl, admin: Boolean(adminEp), minAppVersion: config.minAppVersion });
       return;
     }
 
@@ -396,6 +401,11 @@ export function createGateway(config: Config): Gateway {
       const body = await readJson(req);
       const room = typeof body.room === 'string' ? body.room : '';
       if (!voiceIds.has(room)) throw new HttpError(400, 'unknown_room');
+      const version = appVersion(req.headers['user-agent']);
+      if (version && config.minAppVersion && isOlder(version, config.minAppVersion)) {
+        log(`voice refused: app ${version} is older than ${config.minAppVersion} name=${JSON.stringify(session.name)}`);
+        throw new HttpError(426, 'update_required', UPDATE_REQUIRED);
+      }
       const at = new AccessToken(config.livekitApiKey, config.livekitApiSecret, {
         identity: session.sub,
         name: session.name,
@@ -597,6 +607,7 @@ export function createGateway(config: Config): Gateway {
           users: presence.list(),
           profiles: profiles.all(),
           admin: Boolean(adminEp),
+          minAppVersion: config.minAppVersion,
         });
         broadcastPresence();
         return;

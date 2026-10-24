@@ -34,7 +34,7 @@ export type ChatMessage = {
 
 export type GatewayHandlers = {
   onStatus: (status: 'connecting' | 'online' | 'offline') => void;
-  onReady: (data: { you: Me; serverName: string; channels: Channel[]; users: PresenceUser[]; profiles: Profile[]; admin: boolean }) => void;
+  onReady: (data: { you: Me; serverName: string; channels: Channel[]; users: PresenceUser[]; profiles: Profile[]; admin: boolean; minAppVersion?: string | null }) => void;
   onProfile: (profile: Profile) => void;
   onChannels: (channels: Channel[]) => void;
   onServerName: (name: string) => void;

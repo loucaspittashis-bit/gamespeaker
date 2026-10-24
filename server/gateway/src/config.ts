@@ -1,3 +1,5 @@
+import { VERSION } from './version.ts';
+
 export type ChannelKind = 'voice' | 'text';
 
 export type Channel = {
@@ -22,7 +24,12 @@ export type Config = {
   livekitApiKey: string;
   livekitApiSecret: string;
   channels: Channel[];
+  /** Desktop apps older than this can't join voice and update themselves. null = no minimum. */
+  minAppVersion: string | null;
 };
+
+/** Raise this with a release that everyone must have (or set MIN_APP_VERSION). */
+export const DEFAULT_MIN_APP_VERSION = '0.1.10';
 
 export const DEFAULT_CHANNELS: Channel[] = [
   { id: 'lobby', name: 'Lobby', kind: 'voice' },
@@ -67,6 +74,13 @@ function parseChannels(raw: string | undefined): Channel[] {
   }
 }
 
+function parseMinAppVersion(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') return DEFAULT_MIN_APP_VERSION;
+  if (raw === 'off') return null;
+  if (!VERSION.test(raw)) throw new Error('MIN_APP_VERSION must look like 0.1.10 (or be "off")');
+  return raw;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const missing = ['SERVER_PASSWORD', 'SESSION_SECRET', 'LIVEKIT_URL', 'LIVEKIT_API_KEY', 'LIVEKIT_API_SECRET']
     .filter((k) => !env[k]);
@@ -90,5 +104,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     livekitApiKey: env.LIVEKIT_API_KEY!,
     livekitApiSecret: env.LIVEKIT_API_SECRET!,
     channels: parseChannels(env.CHANNELS),
+    minAppVersion: parseMinAppVersion(env.MIN_APP_VERSION),
   };
 }

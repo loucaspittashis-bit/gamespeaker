@@ -1468,3 +1468,19 @@ button.person { width: 100%; border: 0; color: inherit; text-align: left; font: 
   .pe-preview { position: static; }
   .adm-row .grow { flex-basis: calc(100% - 140px); flex-wrap: wrap; }
 }
+
+/* ---------- updating ---------- */
+/* Below the title bar, so the window can still be moved, minimized or closed. */
+.upd-screen { position: fixed; inset: 36px 0 0; z-index: 75; background: var(--bg); display: grid; place-items: center; padding: 24px; animation: fade 0.15s ease-out; }
+.upd-card { width: min(420px, 100%); display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.upd-logo { width: 56px; height: 56px; border-radius: 16px; margin-bottom: 4px; }
+.upd-card h2 { margin: 0; font-family: var(--display); font-size: 24px; font-weight: 700; }
+.upd-why { margin: 0; color: var(--sub); font-size: 14px; }
+.upd-bar { width: 100%; height: 8px; margin-top: 8px; border-radius: 999px; background: var(--raised-2); overflow: hidden; }
+.upd-bar i { display: block; height: 100%; border-radius: inherit; background: var(--neon); box-shadow: var(--glow-btn); transition: width 0.3s ease-out; }
+.upd-bar i.busy { width: 30% !important; animation: upd-slide 1.2s ease-in-out infinite alternate; }
+@keyframes upd-slide { from { transform: translateX(-10%); } to { transform: translateX(250%); } }
+.upd-line { margin: 0; color: var(--text-2); font-size: 13px; min-height: 18px; font-variant-numeric: tabular-nums; }
+.upd-manual { margin: 6px 0 0; color: var(--mute); font-size: 12px; }
+.upd-manual a { color: var(--neon); }
+@media (prefers-reduced-motion: reduce) { .upd-bar i.busy { animation: none; } }

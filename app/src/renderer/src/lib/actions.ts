@@ -5,6 +5,7 @@ import { initGames, playingNow } from './games';
 import { mentionsMe } from './mentions';
 import { currentCustom, currentStatus, initStatus, isDnd } from './status';
 import { bridge } from './platform';
+import { isOlder } from '../../../shared/version';
 import { settings, updateSettings } from './settings';
 import { sounds } from './sounds';
 import { initVoice, leaveVoice, onVoiceStateChange, refresh } from './voice';
@@ -122,7 +123,9 @@ function connectGateway(session: string): void {
   gateway = new GatewayClient(gatewaySocketUrl(), session, {
     onStatus: (gatewayStatus) => setApp({ gatewayStatus }),
 
-    onReady: ({ you, serverName, channels, users, profiles, admin }) => {
+    onReady: ({ you, serverName, channels, users, profiles, admin, minAppVersion }) => {
+      // Too old for this server: update before anything else.
+      if (bridge && minAppVersion && isOlder(bridge.version, minAppVersion)) setApp({ updateScreen: 'required' });
       const firstText = channels.find((c) => c.kind === 'text')?.id ?? '';
       setApp((s) => ({
         me: you,

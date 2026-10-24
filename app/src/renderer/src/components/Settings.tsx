@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { RELEASES_URL } from './UpdateScreen';
 import { useApp, setApp, type SettingsSection } from '../state/store';
 import { logout } from '../lib/actions';
 import { listDevices } from '../lib/mic';
@@ -350,7 +351,6 @@ const CLOSE_HINT = {
   quit: 'Closes the app and leaves voice.',
 } as const;
 
-const RELEASES_URL = 'https://github.com/loucaspittashis-bit/gamespeaker/releases/latest';
 
 function AppSection() {
   const s = useSettings();

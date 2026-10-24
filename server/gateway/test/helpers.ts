@@ -23,6 +23,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     livekitApiKey: 'APItestkey',
     livekitApiSecret: 'test-livekit-secret-that-is-long-enough-123456',
     channels: DEFAULT_CHANNELS,
+    minAppVersion: '0.1.10',
     ...overrides,
   };
 }

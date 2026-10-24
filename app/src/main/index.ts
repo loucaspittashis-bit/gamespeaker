@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, net, powerMonitor, protocol, session, shell } from 'electron';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { registerCapture } from './capture';
@@ -33,6 +33,26 @@ function readCloseTo(): CloseTo {
   return 'taskbar';
 }
 let closeTo: CloseTo = readCloseTo();
+
+// An update installed while the window was hidden or minimized (nobody looking)
+// starts the new version the same way, instead of popping up over a game.
+const RESTART_HIDDEN_FILE = join(app.getPath('userData'), 'restart-hidden');
+function markRestartHidden(): void {
+  try {
+    writeFileSync(RESTART_HIDDEN_FILE, '');
+  } catch {
+    // not critical
+  }
+}
+function takeRestartHidden(): boolean {
+  try {
+    const fresh = Date.now() - statSync(RESTART_HIDDEN_FILE).mtimeMs < 10 * 60 * 1000;
+    rmSync(RESTART_HIDDEN_FILE, { force: true });
+    return fresh;
+  } catch {
+    return false;
+  }
+}
 
 // The UI is served from app://gamespeaker/ instead of file:// so fetch() works
 // (noise suppression loads its WebAssembly that way) and the page has a stable,
@@ -141,7 +161,10 @@ app.whenReady().then(() => {
   registerGames(getWindow);
   registerPtt(getWindow);
   const tray = createTray({ show: showWindow, quit: () => { quitting = true; app.quit(); }, getWindow });
-  initUpdater(getWindow, () => { quitting = true; });
+  initUpdater(getWindow, () => {
+    quitting = true;
+    if (win && !win.isDestroyed() && (!win.isVisible() || win.isMinimized())) markRestartHidden();
+  });
 
   ipcMain.on('app:version', (event) => {
     event.returnValue = app.getVersion();
@@ -170,8 +193,9 @@ app.whenReady().then(() => {
   });
   win.on('focus', () => win?.flashFrame(false));
 
-  // Started at login: don't pop up over everything; wait minimized in the taskbar (or in the tray).
-  if (process.argv.includes('--hidden')) win.once('ready-to-show', () => (closeTo === 'tray' ? win?.hide() : win?.minimize()));
+  // Started at login, or updated in the background: don't pop up over everything;
+  // wait minimized in the taskbar (or in the tray).
+  if (process.argv.includes('--hidden') || takeRestartHidden()) win.once('ready-to-show', () => (closeTo === 'tray' ? win?.hide() : win?.minimize()));
 
   app.on('activate', () => showWindow());
 });

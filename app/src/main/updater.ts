@@ -7,8 +7,9 @@ const CHECK_EVERY_MS = 30 * 60 * 1000;
 /** Bringing the window up checks again if the last check was this long ago. */
 const RECHECK_ON_FOCUS_MS = 10 * 60 * 1000;
 
-// Downloads new versions from GitHub Releases in the background and installs
-// them on the next restart (or right away when the user clicks "Restart").
+// Downloads new versions from GitHub Releases in the background. The app
+// installs them when that interrupts nothing (see useAutoInstall), when the
+// user clicks "Restart", or on the next quit.
 export function initUpdater(getWindow: () => BrowserWindow | null, beforeInstall: () => void): void {
   const send = (status: UpdateStatus) => {
     const win = getWindow();
@@ -31,14 +32,15 @@ export function initUpdater(getWindow: () => BrowserWindow | null, beforeInstall
   autoUpdater.on('error', (err) => send({ state: 'error', message: err?.message ?? 'Update failed' }));
 
   let lastCheck = 0;
-  let downloaded = false;
-  autoUpdater.on('update-downloaded', () => (downloaded = true));
+  let downloaded: string | null = null;
+  autoUpdater.on('update-downloaded', (info) => (downloaded = info.version));
   const check = () => {
-    if (downloaded) return; // already waiting for a restart
+    // Already waiting for a restart: say so again (the page may have reloaded since).
+    if (downloaded) return send({ state: 'ready', version: downloaded });
     lastCheck = Date.now();
     void autoUpdater.checkForUpdates().catch(() => {});
   };
-  setTimeout(check, 10_000);
+  setTimeout(check, 3_000);
   setInterval(check, CHECK_EVERY_MS);
   app.on('browser-window-focus', () => {
     if (Date.now() - lastCheck > RECHECK_ON_FOCUS_MS) check();

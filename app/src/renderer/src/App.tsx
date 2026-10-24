@@ -13,6 +13,7 @@ import { closeProfile, ProfilePopover } from './components/ProfileCard';
 import { GoLiveModal } from './components/GoLive';
 import { SettingsModal } from './components/Settings';
 import { Welcome } from './components/Welcome';
+import { UpdateScreen } from './components/UpdateScreen';
 
 function Toasts() {
   const toasts = useApp((s) => s.toasts);
@@ -83,6 +84,39 @@ function Shell() {
   );
 }
 
+/** Opened this recently: restarting for an update costs nothing yet. */
+const JUST_OPENED_MS = 3 * 60 * 1000;
+/** Hidden in the tray or minimized for this long counts as not in use. */
+const AWAY_MS = 2 * 60 * 1000;
+
+/**
+ * Installs a downloaded update by itself when that interrupts nothing: never
+ * in voice or while streaming, and only right after opening the app, or while
+ * it's in the background or you're away. Otherwise "Update ready" waits at the top.
+ */
+function useAutoInstall(): void {
+  const ready = useApp((s) => s.update.state === 'ready');
+  useEffect(() => {
+    if (!ready || !bridge) return;
+    let hiddenSince = document.hidden ? Date.now() : 0;
+    const onVisibility = () => (hiddenSince = document.hidden ? Date.now() : 0);
+    const tick = () => {
+      const s = useApp.getState();
+      if (s.voiceChannel || s.myLive || s.updateScreen) return;
+      const justOpened = performance.now() < JUST_OPENED_MS;
+      const away = s.idle || (hiddenSince > 0 && Date.now() - hiddenSince >= AWAY_MS);
+      if (justOpened || away) setApp({ updateScreen: 'restarting' });
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    const timer = setInterval(tick, 10_000);
+    tick();
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [ready]);
+}
+
 export function App() {
   const phase = useApp((s) => s.phase);
   const neon = useSettings((s) => s.neon);
@@ -95,7 +129,7 @@ export function App() {
     void bridge?.setCloseTo(settings().closeTo);
     const offUpdate = bridge?.onUpdateStatus((update) => {
       if (update.state === 'ready' && useApp.getState().update.state !== 'ready') {
-        toast(`Version ${update.version} is ready. Click "Update ready" at the top to restart.`);
+        toast(`Version ${update.version} is ready. It installs itself once you're out of voice and away, or click "Update ready" at the top.`);
       }
       setApp({ update });
     });
@@ -126,9 +160,12 @@ export function App() {
     };
   }, []);
 
+  useAutoInstall();
+
   return (
     <>
       {phase === 'welcome' ? <Welcome /> : <Shell />}
+      <UpdateScreen />
       <Toasts />
     </>
   );

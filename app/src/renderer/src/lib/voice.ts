@@ -13,7 +13,7 @@ import {
   type RemoteVideoTrack,
 } from 'livekit-client';
 import { app, setApp, toast } from '../state/store';
-import { api } from './api';
+import { ApiError, api } from './api';
 import { MicPipeline, type MicOptions } from './mic';
 import { bridge, isDesktop } from './platform';
 import { settings, useSettings, type Resolution } from './settings';
@@ -389,6 +389,12 @@ export async function joinVoice(channelId: string): Promise<void> {
       await r.disconnect(false).catch(() => {});
       setApp({ voiceChannel: null, voiceStatus: 'idle', members: [], streams: [], view: 'text' });
       await releaseMicIfIdle();
+    }
+    // The server wants a newer app for voice: get it now (the browser version is always current).
+    if (err instanceof ApiError && err.code === 'update_required' && isDesktop) {
+      setApp({ updateScreen: 'required' });
+      notify();
+      return;
     }
     const message = err instanceof Error ? err.message : String(err);
     toast(/Permission|NotAllowed/i.test(message) ? 'Microphone access was blocked. Allow it and try again.' : `Couldn't join voice: ${message}`, 'warn');

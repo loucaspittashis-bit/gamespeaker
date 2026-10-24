@@ -86,6 +86,11 @@ export type AppState = {
   popover: null | 'neon' | 'connection';
   toasts: Toast[];
   update: UpdateStatus;
+  /**
+   * Full-screen update: 'required' when this version is too old for the server,
+   * 'restarting' just before a downloaded update installs itself.
+   */
+  updateScreen: 'required' | 'restarting' | null;
 };
 
 export const useApp = create<AppState>()(() => ({
@@ -134,6 +139,7 @@ export const useApp = create<AppState>()(() => ({
   popover: null,
   toasts: [],
   update: { state: 'idle' },
+  updateScreen: null,
 }));
 
 export const app = () => useApp.getState();
