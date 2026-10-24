@@ -645,7 +645,10 @@ export function createGateway(config: Config): Gateway {
         if (msg.status === 'online' || msg.status === 'idle' || msg.status === 'dnd') patch.status = msg.status;
         const custom = parseCustom(msg.custom);
         if (custom !== undefined) patch.custom = custom;
-        if (msg.watching === null || (typeof msg.watching === 'string' && DEVICE_ID.test(msg.watching))) patch.watching = msg.watching;
+        for (const key of ['watching', 'watching2'] as const) {
+          const v = msg[key];
+          if (v === null || (typeof v === 'string' && DEVICE_ID.test(v))) patch[key] = v;
+        }
         if (msg.playing === null) patch.playing = null;
         else if (typeof msg.playing === 'string') {
           patch.playing = cleanText(msg.playing, 60);

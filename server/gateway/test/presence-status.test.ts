@@ -16,10 +16,14 @@ describe('status, custom status and watching', () => {
     assert.equal(me(a.ready).status, 'online');
     assert.equal(me(a.ready).custom, null);
 
-    a.sock.send({ t: 'state', channel: 'lobby', status: 'dnd', custom: { emoji: '💀', text: '  ranked\ngrind ' }, watching: 'device-stat-002' });
+    a.sock.send({
+      t: 'state', channel: 'lobby', status: 'dnd', custom: { emoji: '💀', text: '  ranked\ngrind ' },
+      watching: 'device-stat-002', watching2: 'device-stat-003',
+    });
     const u = me(await b.sock.next((m) => m.t === 'presence' && me(m)?.status === 'dnd'));
     assert.deepEqual(u.custom, { emoji: '💀', text: 'ranked grind' });
     assert.equal(u.watching, 'device-stat-002');
+    assert.equal(u.watching2, 'device-stat-003', 'a second stream, side by side');
 
     // Nonsense is ignored; an empty custom status clears it.
     a.sock.send({ t: 'state', status: 'invisible', custom: { emoji: '', text: '   ' }, watching: '<script>' });
@@ -31,6 +35,7 @@ describe('status, custom status and watching', () => {
     a.sock.send({ t: 'state', channel: null, status: 'idle' });
     const w = me(await b.sock.next((m) => m.t === 'presence' && me(m)?.status === 'idle'));
     assert.equal(w.watching, null);
+    assert.equal(w.watching2, null);
     a.sock.close();
     b.sock.close();
   });

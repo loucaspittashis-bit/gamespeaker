@@ -15,8 +15,9 @@ export type PresenceUser = {
   playing?: string | null;
   status?: Status;
   custom?: CustomStatus | null;
-  /** Whose stream they have on screen. */
+  /** Whose stream they have on screen, and a second one side by side. */
   watching?: string | null;
+  watching2?: string | null;
   since: number;
 };
 

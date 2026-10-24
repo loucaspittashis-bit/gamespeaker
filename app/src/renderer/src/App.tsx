@@ -92,7 +92,7 @@ export function App() {
 
   useEffect(() => {
     if (settings().session) startSession();
-    void bridge?.setCloseToTray(settings().closeToTray);
+    void bridge?.setCloseTo(settings().closeTo);
     const offUpdate = bridge?.onUpdateStatus((update) => {
       if (update.state === 'ready' && useApp.getState().update.state !== 'ready') {
         toast(`Version ${update.version} is ready. Click "Update ready" at the top to restart.`);

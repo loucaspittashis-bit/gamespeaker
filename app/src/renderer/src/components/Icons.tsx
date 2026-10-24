@@ -112,6 +112,12 @@ export const LockIcon = make(
   </>,
 );
 export const ArrowRightIcon = make(<path d="M5 12h14M13 6l6 6-6 6" />);
+export const SplitIcon = make(
+  <>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M12 4v16" />
+  </>,
+);
 export const ImageIcon = make(
   <>
     <rect x="3" y="3" width="18" height="18" rx="3" />

@@ -54,25 +54,19 @@ function VoiceChannels() {
       {channels.filter((c) => c.kind === 'voice').map((c) => {
         const joined = voiceChannel === c.id;
         const present = users.filter((u) => u.channel === c.id);
-        const liveCount = present.filter((u) => u.live).length;
         // Inside your own channel, show LiveKit's view (speaking rings); elsewhere, presence.
         const list = joined && status === 'connected' && members.length ? members : null;
+        const rows = list ?? present.map((u) => ({ id: u.id, name: u.name, color: u.color, speaking: false, micMuted: u.muted, streaming: Boolean(u.live), isLocal: false }));
         return (
           <div key={c.id} className={`vc${joined ? ' joined' : ''}${present.length ? ' has-people' : ''}`}>
             <button className="vc-head hv" onClick={() => void joinVoice(c.id)} aria-label={joined ? `${c.name}, connected` : `Join ${c.name}`}>
               <span className="ic"><SpeakerIcon size="s" /></span>
               <span className="n">{c.name}</span>
               {(mentionCounts[c.id] ?? 0) > 0 && <span className="ping-count">{mentionCounts[c.id]}</span>}
-              {!joined && liveCount > 0 && <span className="lv">{liveCount} LIVE</span>}
-              {!joined && present.length > 0 && (
-                <span className="stack">
-                  {present.slice(0, 4).map((u) => <Avatar key={u.id} id={u.id} name={u.name} color={u.color} size={20} />)}
-                </span>
-              )}
             </button>
-            {joined && (
+            {rows.length > 0 && (
               <div className="vc-members">
-                {(list ?? present.map((u) => ({ id: u.id, name: u.name, color: u.color, speaking: false, micMuted: u.muted, streaming: Boolean(u.live), isLocal: false }))).map((m) => {
+                {rows.map((m) => {
                   const pres = users.find((u) => u.id === m.id);
                   const deaf = Boolean(pres?.deafened);
                   return (
@@ -91,8 +85,10 @@ function VoiceChannels() {
                       {m.streaming && (
                         <span
                           className="live-pill"
-                          title="Watch stream"
+                          title={joined ? 'Watch stream' : `Live in ${c.name}`}
                           onClick={(e) => {
+                            // Only streams in your own channel can be watched.
+                            if (!joined) return;
                             e.stopPropagation();
                             setFocus(m.id);
                           }}

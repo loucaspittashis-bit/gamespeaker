@@ -14,13 +14,14 @@ export type UserState = {
   playing: string | null;
   status: Status;
   custom: CustomStatus | null;
-  /** Whose stream they have on screen. */
+  /** Whose stream they have on screen, and a second one when watching side by side. */
   watching: string | null;
+  watching2: string | null;
   since: number; // when they joined their current voice channel
 };
 
 export type StatePatch = Partial<
-  Pick<UserState, 'name' | 'color' | 'channel' | 'muted' | 'deafened' | 'live' | 'playing' | 'status' | 'custom' | 'watching'>
+  Pick<UserState, 'name' | 'color' | 'channel' | 'muted' | 'deafened' | 'live' | 'playing' | 'status' | 'custom' | 'watching' | 'watching2'>
 >;
 
 // Who is online, which voice channel they're in, muted/deafened/live.
@@ -40,7 +41,7 @@ export class Presence {
     this.users.set(user.id, {
       ...user,
       channel: null, muted: false, deafened: false, live: null, playing: null,
-      status: 'online', custom: null, watching: null, since: Date.now(), conns: 1,
+      status: 'online', custom: null, watching: null, watching2: null, since: Date.now(), conns: 1,
     });
   }
 
@@ -62,6 +63,7 @@ export class Presence {
     if (user.channel === null) {
       user.live = null;
       user.watching = null;
+      user.watching2 = null;
     }
     return true;
   }

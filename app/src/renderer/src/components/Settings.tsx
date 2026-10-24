@@ -344,6 +344,14 @@ function Streaming() {
 
 // ---------------- App ----------------
 
+const CLOSE_HINT = {
+  taskbar: 'Minimizes to the taskbar. You stay in voice.',
+  tray: 'Hides it next to the clock. You stay in voice; open it from the tray icon.',
+  quit: 'Closes the app and leaves voice.',
+} as const;
+
+const RELEASES_URL = 'https://github.com/loucaspittashis-bit/gamespeaker/releases/latest';
+
 function AppSection() {
   const s = useSettings();
   const update = useApp((st) => st.update);
@@ -408,8 +416,22 @@ function AppSection() {
         )}
         {isDesktop && (
           <>
-            <Toggle on={launch} onChange={(v) => { setLaunch(v); void bridge?.setLaunchAtLogin(v); }} title="Start with your computer" desc="Opens quietly in the tray so friends can reach you." />
-            <Toggle on={s.closeToTray} onChange={(v) => { updateSettings({ closeToTray: v }); void bridge?.setCloseToTray(v); }} title="Close to tray" desc="Closing the window keeps you in voice. Quit from the tray icon." />
+            <Toggle
+              on={launch}
+              onChange={(v) => { setLaunch(v); void bridge?.setLaunchAtLogin(v); }}
+              title="Start with your computer"
+              desc={s.closeTo === 'tray' ? 'Opens quietly in the tray so friends can reach you.' : 'Opens minimized in the taskbar so friends can reach you.'}
+            />
+            <div className="close-choice">
+              <span className="t"><b>When I close the window</b><small>{CLOSE_HINT[s.closeTo]}</small></span>
+              <div className="seg">
+                {(['taskbar', 'tray', 'quit'] as const).map((v) => (
+                  <button key={v} aria-pressed={s.closeTo === v} onClick={() => { updateSettings({ closeTo: v }); void bridge?.setCloseTo(v); }}>
+                    {v === 'taskbar' ? 'Minimize' : v === 'tray' ? 'Hide in tray' : 'Quit'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -443,6 +465,12 @@ function AppSection() {
               </button>
             )}
           </div>
+          {update.state === 'error' && (
+            <div className="adm-hint">
+              {update.message}. You can always install the newest version by hand:{' '}
+              <a href={RELEASES_URL} target="_blank" rel="noreferrer">download it here</a>, then run it. You stay signed in.
+            </div>
+          )}
         </Card>
       )}
     </>

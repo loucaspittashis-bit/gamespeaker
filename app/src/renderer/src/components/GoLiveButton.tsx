@@ -15,7 +15,8 @@ export function GoLiveButton({ variant }: { variant: 'side' | 'dock' }) {
   const connected = useApp((s) => s.voiceStatus === 'connected');
   const myId = useApp((s) => s.me?.id);
   const users = useApp((s) => s.users);
-  const watching = users.filter((u) => u.watching === myId && u.id !== myId).length;
+  const watchers = users.filter((u) => (u.watching === myId || u.watching2 === myId) && u.id !== myId);
+  const watching = watchers.length;
   const [starting, setStarting] = useState(false);
   const cls = variant === 'side' ? 'live-btn' : 'go';
   // The sidebar button waits for voice to connect; the dock only shows once connected anyway.
@@ -26,7 +27,7 @@ export function GoLiveButton({ variant }: { variant: 'side' | 'dock' }) {
     return (
       <button
         className={`${cls} on`}
-        title={watching ? users.filter((u) => u.watching === myId).map((u) => u.name).join(', ') + ' watching' : 'Nobody watching yet'}
+        title={watching ? watchers.map((u) => u.name).join(', ') + ' watching' : 'Nobody watching yet'}
         onClick={() => void stopStream()}
       >
         <ScreenIcon size={variant === 'side' ? 's' : undefined} />

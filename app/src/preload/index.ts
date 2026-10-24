@@ -45,7 +45,7 @@ const bridge: GamespeakerBridge = {
 
   getLaunchAtLogin: () => ipcRenderer.invoke('app:get-launch-at-login'),
   setLaunchAtLogin: (enabled) => ipcRenderer.invoke('app:set-launch-at-login', enabled),
-  setCloseToTray: (enabled) => ipcRenderer.invoke('app:set-close-to-tray', enabled),
+  setCloseTo: (value) => ipcRenderer.invoke('app:set-close-to', value),
   setTitleBarColor: (color) => ipcRenderer.send('app:title-bar-color', color),
 };
 

@@ -154,24 +154,30 @@ export function refresh(): void {
       };
     });
 
+  // You only watch a stream when you choose to; nothing starts by itself.
+  // If one of two side-by-side streams ends, the other takes the whole stage.
+  const exists = (id: string | null) => id !== null && streams.some((x) => x.id === id);
   let focus = s.focus;
-  if (focus && !streams.some((x) => x.id === focus)) focus = null;
-  if (!focus && streams.length) focus = (streams.find((x) => !x.isLocal) ?? streams[0]!).id;
-  const focusChanged = focus !== s.focus;
-  setApp({ members, streams, focus });
+  let focus2 = exists(s.focus2) ? s.focus2 : null;
+  if (!exists(focus)) {
+    focus = focus2;
+    focus2 = null;
+  }
+  if (focus2 === focus) focus2 = null;
+  const focusChanged = focus !== s.focus || focus2 !== s.focus2;
+  setApp({ members, streams, focus, focus2 });
   if (focusChanged) applyAllSubscriptions();
 }
 
-// Viewers only download what they need: everyone's mic, stream video (small
-// tiles get a low-res layer automatically), and stream sound only for the
-// stream being watched.
+// Download only what you're using: everyone's mic, and the video and sound of
+// the one stream you're watching. Other streams cost nothing until you click Watch.
 function applySubscriptions(p: RemoteParticipant): void {
-  const focus = app().focus;
+  const { focus, focus2 } = app();
+  const watched = focus === p.identity || focus2 === p.identity;
   for (const pub of p.trackPublications.values()) {
     const want =
       pub.source === Track.Source.Microphone ||
-      pub.source === Track.Source.ScreenShare ||
-      (pub.source === Track.Source.ScreenShareAudio && focus === p.identity);
+      ((pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) && watched);
     if (pub.isSubscribed !== want) pub.setSubscribed(want);
   }
 }
@@ -271,7 +277,10 @@ function wireRoom(r: Room): void {
       refresh();
     })
     .on(RoomEvent.TrackPublished, (pub, p) => {
-      if (pub.source === Track.Source.ScreenShare) sounds.streamStart();
+      if (pub.source === Track.Source.ScreenShare) {
+        sounds.streamStart();
+        toast(`${p.name || 'Someone'} went live. Click Watch on their tile to tune in.`);
+      }
       applySubscriptions(p);
       refresh();
     })
@@ -322,7 +331,7 @@ export async function joinVoice(channelId: string): Promise<void> {
   if (!session) return;
   if (room) await leaveVoice({ silent: true });
 
-  setApp({ voiceChannel: channelId, voiceStatus: 'connecting', view: 'voice', members: [], streams: [], focus: null, fullscreen: false, pings: [] });
+  setApp({ voiceChannel: channelId, voiceStatus: 'connecting', view: 'voice', members: [], streams: [], focus: null, focus2: null, fullscreen: false, pings: [] });
   notify();
 
   void mixContext?.close().catch(() => {});
@@ -417,6 +426,7 @@ export async function leaveVoice(opts: { silent?: boolean } = {}): Promise<void>
     members: [],
     streams: [],
     focus: null,
+    focus2: null,
     pings: [],
     fullscreen: false,
     view: s.view === 'voice' ? 'text' : s.view,
@@ -459,8 +469,26 @@ function syncMicMute(): void {
   if (micPub) void (off ? micPub.mute() : micPub.unmute());
 }
 
+/** Watch this stream on the main stage (null: watch nothing). */
 export function setFocus(id: string | null): void {
-  setApp({ focus: id });
+  setApp((s) => ({ focus: id, focus2: id === null || s.focus2 === id ? null : s.focus2 }));
+  applyAllSubscriptions();
+}
+
+/** Watch a second stream next to the one on stage. */
+export function watchSideBySide(id: string): void {
+  const s = app();
+  if (!s.focus) return setFocus(id);
+  if (id === s.focus) return;
+  setApp({ focus2: id });
+  applyAllSubscriptions();
+}
+
+/** Stop watching one stream; if two were side by side, the other fills the stage. */
+export function stopWatching(id: string): void {
+  const s = app();
+  if (s.focus2 === id) setApp({ focus2: null });
+  else if (s.focus === id) setApp({ focus: s.focus2, focus2: null });
   applyAllSubscriptions();
 }
 
@@ -533,7 +561,10 @@ export async function startStream(req: StreamRequest): Promise<boolean> {
   }
 
   const quality = `${req.res}${req.fps} · ${codec.label}${codec.hardware ? '' : ' (CPU)'} · ${mbps} Mbps`;
-  setApp({ myLive: { title, quality }, focus: r.localParticipant.identity });
+  // Show your own preview, next to whatever you're already watching.
+  const me = r.localParticipant.identity;
+  const watchingOther = app().focus && app().focus !== me;
+  setApp(watchingOther ? { myLive: { title, quality }, focus2: me } : { myLive: { title, quality }, focus: me });
   sounds.streamStart();
   refresh();
   notify();

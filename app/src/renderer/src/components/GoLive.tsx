@@ -153,8 +153,15 @@ export function GoLiveModal() {
                 )}
                 {shown.map((s) => (
                   <button key={s.id} className="source" aria-pressed={s.id === selected} onClick={() => setSelected(s.id)}>
-                    <span className="thumb">
-                      <img src={s.thumbnail} alt="" />
+                    <span className={`thumb${s.preview === false ? ' no-preview' : ''}`}>
+                      {s.preview === false ? (
+                        <>
+                          {s.appIcon && <img className="big-icon" src={s.appIcon} alt="" />}
+                          <small>No preview, streams fine</small>
+                        </>
+                      ) : (
+                        <img src={s.thumbnail} alt="" />
+                      )}
                       {s.id === selected && <span className="tick"><CheckIcon size="xs" /></span>}
                     </span>
                     <span className="cap">

@@ -68,6 +68,8 @@ export type AppState = {
   members: VoiceMember[];
   streams: StreamInfo[];
   focus: string | null;
+  /** A second stream watched side by side with `focus`. */
+  focus2: string | null;
   pings: number[];
   muted: boolean;
   deafened: boolean;
@@ -114,6 +116,7 @@ export const useApp = create<AppState>()(() => ({
   members: [],
   streams: [],
   focus: null,
+  focus2: null,
   pings: [],
   muted: false,
   deafened: false,

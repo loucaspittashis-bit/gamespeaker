@@ -1,6 +1,7 @@
-import { BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPreferences } from 'electron';
 import { nodeRequire } from './native';
-import type { AppAudioStatus, CaptureListResult } from '../shared/bridge';
+import { win32 } from './win32';
+import type { AppAudioStatus, CaptureListResult, CaptureSource } from '../shared/bridge';
 
 const SCREEN_PERMISSION_HELP =
   'macOS needs permission before Gamecoms can share your screen. Turn it on in System Settings → ' +
@@ -12,7 +13,6 @@ type LoopbackCapture = {
   stop(): void;
 };
 let loopbackModule: { LoopbackCapture: new () => LoopbackCapture } | null = null;
-let getWindowPid: ((hwnd: number) => number) | null = null;
 
 if (process.platform === 'win32') {
   try {
@@ -20,18 +20,40 @@ if (process.platform === 'win32') {
   } catch (err) {
     console.warn('per-app audio unavailable:', err);
   }
+}
+
+// Window classes that are part of Windows itself, never worth streaming.
+const SHELL_CLASSES = new Set(['Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd', 'Windows.UI.Core.CoreWindow', 'NotifyIconOverflowWindow']);
+
+/**
+ * Windows' capture list leaves out some real app windows (the Battle.net
+ * launcher, for one). Find visible windows it skipped so they can still be
+ * picked. There's no preview for these, so they show the program's icon.
+ */
+async function windowsItMissed(listed: Set<number>): Promise<CaptureSource[]> {
+  if (!win32) return [];
+  const out: CaptureSource[] = [];
   try {
-    const koffi = nodeRequire('koffi');
-    const user32 = koffi.load('user32.dll');
-    const fn = user32.func('uint32_t __stdcall GetWindowThreadProcessId(uintptr_t hWnd, _Out_ uint32_t *lpdwProcessId)');
-    getWindowPid = (hwnd: number) => {
-      const out = [0];
-      fn(hwnd, out);
-      return out[0] ?? 0;
-    };
+    for (const w of win32.topWindows()) {
+      if (listed.has(w.hwnd) || w.pid === process.pid || w.minimized || w.cloaked) continue;
+      if (w.width < 200 || w.height < 150 || SHELL_CLASSES.has(w.className)) continue;
+      // See-through overlays drawn over the whole screen (NVIDIA, Game Bar) aren't windows to share.
+      if (w.overlay && win32.isFullscreen(w.hwnd)) continue;
+      const exePath = win32.exePathOf(w.pid);
+      const icon = exePath ? await app.getFileIcon(exePath, { size: 'large' }).catch(() => null) : null;
+      out.push({
+        id: `window:${w.hwnd}:0`,
+        name: w.title,
+        kind: 'window',
+        thumbnail: '',
+        appIcon: icon && !icon.isEmpty() ? icon.toDataURL() : null,
+        preview: false,
+      });
+    }
   } catch (err) {
-    console.warn('window -> process lookup unavailable:', err);
+    console.warn('could not list extra windows:', err);
   }
+  return out;
 }
 
 let selectedSourceId: string | null = null;
@@ -61,18 +83,17 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
       }
       // Never offer our own windows (the app, popped-out streams).
       const own = new Set(BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId()));
-      return {
-        ok: true,
-        sources: sources
-          .filter((s) => s.name && !own.has(s.id))
-          .map((s) => ({
-            id: s.id,
-            name: s.name,
-            kind: s.id.startsWith('screen:') ? ('screen' as const) : ('window' as const),
-            thumbnail: s.thumbnail.toDataURL(),
-            appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
-          })),
-      };
+      const listed: CaptureSource[] = sources
+        .filter((s) => s.name && !own.has(s.id))
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          kind: s.id.startsWith('screen:') ? ('screen' as const) : ('window' as const),
+          thumbnail: s.thumbnail.toDataURL(),
+          appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+        }));
+      const hwnds = new Set(sources.map((s) => Number(/^window:(\d+):/.exec(s.id)?.[1] ?? 0)));
+      return { ok: true, sources: [...listed, ...(await windowsItMissed(hwnds))] };
     } catch (err) {
       if (isMac && systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
         return { ok: false, reason: 'permission', message: SCREEN_PERMISSION_HELP };
@@ -97,13 +118,13 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
   session.defaultSession.setDisplayMediaRequestHandler(
     async (_request, callback) => {
       const sources = await desktopCapturer.getSources({ types: ['window', 'screen'] });
-      const source = sources.find((s) => s.id === selectedSourceId) ?? null;
+      const id = selectedSourceId;
       selectedSourceId = null;
-      if (!source) {
-        callback({});
-        return;
-      }
-      callback({ video: source });
+      const source = sources.find((s) => s.id === id) ?? null;
+      if (source) callback({ video: source });
+      // A window Windows' list skipped: capture it directly by its handle.
+      else if (id && /^window:\d+:/.test(id)) callback({ video: { id, name: 'Window' } });
+      else callback({});
     },
     { useSystemPicker: false },
   );
@@ -119,7 +140,7 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
     const windowMatch = /^window:(\d+):/.exec(sourceId);
     if (windowMatch) {
       // A window: capture only that program (and its child processes).
-      pid = getWindowPid?.(Number(windowMatch[1])) ?? 0;
+      pid = win32?.pidOf(Number(windowMatch[1])) ?? 0;
       includeTree = true;
       if (!pid) return { ok: false, reason: 'Could not find the program behind that window.' };
     } else {

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useApp, setApp, type StreamInfo, type VoiceMember } from '../state/store';
 import { useSettings, updateSettings } from '../lib/settings';
-import { leaveVoice, setDeafened, setFocus, setMuted } from '../lib/voice';
+import { leaveVoice, setDeafened, setFocus, setMuted, stopWatching, watchSideBySide } from '../lib/voice';
 import { Avatar } from './Avatar';
 import { openProfile } from './ProfileCard';
 import { GoLiveButton } from './GoLiveButton';
@@ -9,7 +9,7 @@ import { NeonPicker } from './NeonPicker';
 import { openUserMenu } from './Sidebar';
 import { TrackVideo, popOut, useStreamStats } from './TrackVideo';
 import {
-  ChatIcon, EyeIcon, HeadphonesIcon, HeadphonesOffIcon, MaximizeIcon, MicIcon, MicOffIcon, MinimizeIcon,
+  ChatIcon, CloseIcon, EyeIcon, SplitIcon, HeadphonesIcon, HeadphonesOffIcon, MaximizeIcon, MicIcon, MicOffIcon, MinimizeIcon,
   PaletteIcon, PhoneOffIcon, PopoutIcon, SignalIcon, SpeakerIcon, SpeakerOffIcon,
 } from './Icons';
 
@@ -109,7 +109,7 @@ function StreamVolume({ id }: { id: string }) {
 /** Who has this stream on screen; the names show on hover. */
 function Viewers({ streamId }: { streamId: string }) {
   const users = useApp((s) => s.users);
-  const viewers = users.filter((u) => u.watching === streamId && u.id !== streamId);
+  const viewers = users.filter((u) => (u.watching === streamId || u.watching2 === streamId) && u.id !== streamId);
   return (
     <div className="glass ov-chip viewers" tabIndex={0} aria-label={`${viewers.length} watching`}>
       <EyeIcon size="xs" />
@@ -161,6 +161,17 @@ function FocusedStream({ stream }: { stream: StreamInfo }) {
           </button>
         )}
         <button
+          className="ov glass stop-watch"
+          title={stream.isLocal ? 'Hide your preview (you stay live)' : 'Stop watching'}
+          onClick={() => {
+            if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+            stopWatching(stream.id);
+          }}
+        >
+          <CloseIcon />
+          <span>{stream.isLocal ? 'Hide preview' : 'Stop watching'}</span>
+        </button>
+        <button
           className="ov glass"
           title={full ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
           aria-label={full ? 'Exit fullscreen' : 'Fullscreen'}
@@ -175,26 +186,69 @@ function FocusedStream({ stream }: { stream: StreamInfo }) {
 
 function StreamTile({ stream }: { stream: StreamInfo }) {
   const speaking = useApp((s) => s.members.find((m) => m.id === stream.id)?.speaking ?? false);
+  const watchingOne = useApp((s) => Boolean(s.focus));
   return (
-    <button
-      className={`tile${speaking ? ' speaking' : ''}`}
+    <div
+      className={`tile stream-tile${speaking ? ' speaking' : ''}`}
       onClick={() => setFocus(stream.id)}
       onContextMenu={(e) => openUserMenu(e, stream.id)}
-      aria-label={`Watch ${stream.name}'s stream`}
+      role="group"
+      aria-label={`${stream.name}'s stream`}
     >
-      <TrackVideo track={stream.track} />
+      {/* Not watching: nothing is downloaded, so show who's live instead of video. */}
+      <Avatar id={stream.id} name={stream.name} color={stream.color} size={40} />
       <span className="glass name-tag"><span className="live-pill" style={{ fontSize: 9, padding: '1px 5px' }}>LIVE</span>{stream.isLocal ? 'You' : stream.name}</span>
       {stream.quality && <span className="glass tile-quality">{stream.quality.split(' · ')[0]}</span>}
-      <span className="watch ctl">Watch</span>
-    </button>
+      <span className="tile-actions">
+        {watchingOne && (
+          <button
+            className="tile-side"
+            title="Watch next to the current stream"
+            onClick={(e) => {
+              e.stopPropagation();
+              watchSideBySide(stream.id);
+            }}
+          >
+            <SplitIcon size="xs" />
+            Side by side
+          </button>
+        )}
+        <button
+          className="watch"
+          onClick={(e) => {
+            e.stopPropagation();
+            setFocus(stream.id);
+          }}
+        >
+          {stream.isLocal ? 'Preview' : 'Watch'}
+        </button>
+      </span>
+    </div>
   );
 }
 
 function PersonTile({ m, big }: { m: VoiceMember; big?: boolean }) {
+  const live = useApp((s) => s.streams.find((x) => x.id === m.id));
   if (big) {
     return (
-      <div className={`ptile${m.speaking ? ' speaking' : ''}`} onClick={(e) => openProfile(e, m.id)} onContextMenu={(e) => openUserMenu(e, m.id)}>
+      <div className={`ptile${m.speaking ? ' speaking' : ''}${live ? ' is-live' : ''}`} onClick={(e) => openProfile(e, m.id)} onContextMenu={(e) => openUserMenu(e, m.id)}>
         <Avatar id={m.id} name={m.name} color={m.color} size={84} />
+        {live && (
+          <div className="ptile-live">
+            <span className="live-pill">LIVE</span>
+            <span className="t">{live.title}{live.quality ? ` · ${live.quality.split(' · ')[0]}` : ''}</span>
+            <button
+              className="btn-neon"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFocus(m.id);
+              }}
+            >
+              <EyeIcon size="s" />
+              {m.isLocal ? 'Show my stream' : 'Watch stream'}
+            </button>
+          </div>
+        )}
         <span className="glass name-tag">
           {m.name}{m.isLocal ? ' (you)' : ''}
           {m.micMuted && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
@@ -240,13 +294,39 @@ function Dock() {
   );
 }
 
+/**
+ * Two streams on one stage: side by side or one above the other, whichever
+ * shows the 16:9 pictures bigger in the space there is.
+ */
+function Split({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [rows, setRows] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      const { width: w, height: h } = el.getBoundingClientRect();
+      const sideBySide = Math.min(w / 2, (h * 16) / 9);
+      const stacked = Math.min(w, ((h / 2) * 16) / 9);
+      setRows(stacked > sideBySide);
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    fit();
+    return () => ro.disconnect();
+  }, []);
+  return <div ref={ref} className={`split${rows ? ' rows' : ''}`}>{children}</div>;
+}
+
 export function VoiceView() {
   const status = useApp((s) => s.voiceStatus);
   const members = useApp((s) => s.members);
   const streams = useApp((s) => s.streams);
   const focus = useApp((s) => s.focus);
   const fullscreen = useApp((s) => s.fullscreen);
+  const focus2 = useApp((s) => s.focus2);
   const focused = streams.find((s) => s.id === focus) ?? null;
+  const second = streams.find((s) => s.id === focus2) ?? null;
 
   return (
     <section className="chat" aria-label="Voice channel">
@@ -256,9 +336,16 @@ export function VoiceView() {
           <div className="connecting"><span className="pulse" style={{ color: 'var(--neon)' }} />Joining voice…</div>
         ) : focused ? (
           <>
-            <FocusedStream stream={focused} />
+            {second ? (
+              <Split>
+                <FocusedStream stream={focused} />
+                <FocusedStream stream={second} />
+              </Split>
+            ) : (
+              <FocusedStream stream={focused} />
+            )}
             <div className="film">
-              {streams.filter((s) => s.id !== focused.id).map((s) => <StreamTile key={s.id} stream={s} />)}
+              {streams.filter((s) => s.id !== focused.id && s.id !== second?.id).map((s) => <StreamTile key={s.id} stream={s} />)}
               {members.filter((m) => !m.streaming).map((m) => <PersonTile key={m.id} m={m} />)}
             </div>
           </>

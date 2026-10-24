@@ -53,7 +53,8 @@ export type Settings = {
   lastRead: Record<string, number>; // channel -> last seen message id
 
   // desktop
-  closeToTray: boolean;
+  /** The window's close button: minimize to the taskbar, hide in the tray, or quit. */
+  closeTo: 'taskbar' | 'tray' | 'quit';
 
   /** Join/leave/live chimes and the message blip. */
   soundEffects: boolean;
@@ -105,7 +106,7 @@ const defaults: Settings = {
   codecPref: 'auto',
   showStreamStats: true,
   lastRead: {},
-  closeToTray: true,
+  closeTo: 'taskbar',
   soundEffects: true,
   detectGames: true,
   showPlaying: true,
@@ -129,12 +130,15 @@ export const useSettings = create<SettingsStore>()(
     }),
     {
       name: 'gamespeaker.settings',
-      version: 2,
+      version: 3,
       partialize: ({ set: _set, ...rest }) => rest,
       // v2: streaming tops out at 1440p; older saved defaults of 4K become 1440p.
+      // v3: "close to tray" became a choice; closing now minimizes to the taskbar.
       migrate: (persisted) => {
-        const s = (persisted ?? {}) as Partial<Settings>;
+        const s = (persisted ?? {}) as Partial<Settings> & { closeToTray?: boolean };
         if (s.streamRes && !RESOLUTIONS_OFFERED.includes(s.streamRes)) s.streamRes = '1440p';
+        if (!s.closeTo) s.closeTo = s.closeToTray === false ? 'quit' : 'taskbar';
+        delete s.closeToTray;
         return s as SettingsStore;
       },
     },

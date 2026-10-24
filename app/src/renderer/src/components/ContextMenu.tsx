@@ -1,9 +1,9 @@
 import { useApp, setApp, toast } from '../state/store';
 import { useSettings, updateSettings } from '../lib/settings';
-import { setFocus } from '../lib/voice';
+import { setFocus, watchSideBySide } from '../lib/voice';
 import { Avatar } from './Avatar';
 import { openProfile } from './ProfileCard';
-import { CheckIcon, EyeIcon } from './Icons';
+import { CheckIcon, EyeIcon, SplitIcon } from './Icons';
 
 export function ContextMenu() {
   const ctx = useApp((s) => s.ctxMenu);
@@ -23,6 +23,8 @@ export function ContextMenu() {
   const color = pres?.color ?? member?.color ?? '#8b919d';
   const where = channels.find((c) => c.id === pres?.channel)?.name;
   const streaming = streams.some((s) => s.id === id);
+  const focus = useApp((s) => s.focus);
+  const focus2 = useApp((s) => s.focus2);
   const close = () => setApp({ ctxMenu: null });
 
   return (
@@ -60,6 +62,12 @@ export function ContextMenu() {
               <span>Watch stream</span>
               <EyeIcon size="s" />
             </button>
+            {focus && focus !== id && focus2 !== id && (
+              <button className="mi" role="menuitem" onClick={() => { watchSideBySide(id); setApp({ view: 'voice' }); close(); }}>
+                <span>Watch side by side</span>
+                <SplitIcon size="s" />
+              </button>
+            )}
             <div className="vol">
               <label className="label" htmlFor="stream-vol"><span>Stream volume</span><span>{streamVolume}%</span></label>
               <input

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, net, powerMonitor, protocol, session, shell } from 'electron';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { registerCapture } from './capture';
@@ -17,7 +18,21 @@ app.setPath('userData', join(app.getPath('appData'), 'Gamespeaker'));
 
 let win: BrowserWindow | null = null;
 let quitting = false;
-let closeToTray = true;
+
+// What the window's close button does. Saved here too, because the main process
+// needs it at startup (Start with your computer) before the app's settings load.
+type CloseTo = 'taskbar' | 'tray' | 'quit';
+const PREFS_FILE = join(app.getPath('userData'), 'window-prefs.json');
+function readCloseTo(): CloseTo {
+  try {
+    const v = JSON.parse(readFileSync(PREFS_FILE, 'utf8')).closeTo;
+    if (v === 'taskbar' || v === 'tray' || v === 'quit') return v;
+  } catch {
+    // first run
+  }
+  return 'taskbar';
+}
+let closeTo: CloseTo = readCloseTo();
 
 // The UI is served from app://gamespeaker/ instead of file:// so fetch() works
 // (noise suppression loads its WebAssembly that way) and the page has a stable,
@@ -78,10 +93,11 @@ function createWindow(): BrowserWindow {
   window.once('ready-to-show', () => window.show());
 
   window.on('close', (event) => {
-    if (!quitting && closeToTray) {
-      event.preventDefault();
-      window.hide();
-    }
+    if (quitting || closeTo === 'quit') return;
+    // Keep running so friends can still reach you: minimized in the taskbar, or hidden in the tray.
+    event.preventDefault();
+    if (closeTo === 'tray') window.hide();
+    else window.minimize();
   });
 
   // Stream pop-outs are same-origin blank windows the renderer fills in.
@@ -134,8 +150,14 @@ app.whenReady().then(() => {
   ipcMain.handle('app:set-launch-at-login', (_e, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: Boolean(enabled), args: ['--hidden'] });
   });
-  ipcMain.handle('app:set-close-to-tray', (_e, enabled: boolean) => {
-    closeToTray = Boolean(enabled);
+  ipcMain.handle('app:set-close-to', (_e, value: unknown) => {
+    if (value !== 'taskbar' && value !== 'tray' && value !== 'quit') return;
+    closeTo = value;
+    try {
+      writeFileSync(PREFS_FILE, JSON.stringify({ closeTo }));
+    } catch {
+      // not critical
+    }
   });
   ipcMain.on('app:title-bar-color', (_e, color: string) => {
     if (!isMac && win && /^#[0-9a-f]{6}$/i.test(color)) win.setTitleBarOverlay({ color, symbolColor: '#a7adb8', height: 36 });
@@ -148,8 +170,8 @@ app.whenReady().then(() => {
   });
   win.on('focus', () => win?.flashFrame(false));
 
-  // Started at login: stay in the tray instead of popping up.
-  if (process.argv.includes('--hidden')) win.once('ready-to-show', () => win?.hide());
+  // Started at login: don't pop up over everything; wait minimized in the taskbar (or in the tray).
+  if (process.argv.includes('--hidden')) win.once('ready-to-show', () => (closeTo === 'tray' ? win?.hide() : win?.minimize()));
 
   app.on('activate', () => showWindow());
 });

@@ -8,8 +8,10 @@ export type CaptureSource = {
   id: string;
   name: string;
   kind: 'window' | 'screen';
-  thumbnail: string; // data URL
+  thumbnail: string; // data URL ('' when there's no preview)
   appIcon: string | null; // data URL
+  /** False for windows Windows' capture list skipped: no preview picture, but they stream fine. */
+  preview?: boolean;
 };
 
 export type CaptureListResult =
@@ -77,6 +79,7 @@ export interface GamespeakerBridge {
 
   getLaunchAtLogin(): Promise<boolean>;
   setLaunchAtLogin(enabled: boolean): Promise<void>;
-  setCloseToTray(enabled: boolean): Promise<void>;
+  /** What the window's close button does. */
+  setCloseTo(value: 'taskbar' | 'tray' | 'quit'): Promise<void>;
   setTitleBarColor(color: string): void;
 }

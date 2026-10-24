@@ -69,11 +69,12 @@ export async function uploadProfileImage(kind: 'avatar' | 'banner', image: Blob)
   }
 }
 
-/** The stream we have on screen: a friend's stream focused in the voice view. */
-function watchingNow(): string | null {
+/** A friend's stream we have on screen in the voice view (slot 2: side by side). */
+function watchingNow(slot: 'focus' | 'focus2' = 'focus'): string | null {
   const s = app();
-  if (!s.voiceChannel || s.view !== 'voice' || !s.focus) return null;
-  return s.streams.some((x) => x.id === s.focus && !x.isLocal) ? s.focus : null;
+  const id = s[slot];
+  if (!s.voiceChannel || s.view !== 'voice' || !id) return null;
+  return s.streams.some((x) => x.id === id && !x.isLocal) ? id : null;
 }
 
 let lastPresence = '';
@@ -92,6 +93,7 @@ export function syncPresence(force = false): void {
     status: currentStatus(),
     custom: currentCustom(),
     watching: watchingNow(),
+    watching2: watchingNow('focus2'),
   };
   const json = JSON.stringify(state);
   if ((force || json !== lastPresence) && gateway?.send(state)) lastPresence = json;
@@ -109,7 +111,7 @@ export function startSession(): void {
     watchingSubscribed = true;
     // What we're watching changes with focus and view, not with voice events.
     useApp.subscribe((s, prev) => {
-      if (s.focus !== prev.focus || s.view !== prev.view || s.streams !== prev.streams) syncPresence();
+      if (s.focus !== prev.focus || s.focus2 !== prev.focus2 || s.view !== prev.view || s.streams !== prev.streams) syncPresence();
     });
   }
   setApp({ phase: 'ready' });
