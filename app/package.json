@@ -1,10 +1,10 @@
 {
   "name": "gamespeaker",
-  "productName": "Gamespeaker",
-  "version": "0.1.2",
+  "productName": "Gamecoms",
+  "version": "0.1.3",
   "private": true,
-  "description": "Private voice, chat and 4K streaming for your crew",
-  "author": "Gamespeaker",
+  "description": "Private voice, chat and game streaming for your crew",
+  "author": "Gamecoms",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {

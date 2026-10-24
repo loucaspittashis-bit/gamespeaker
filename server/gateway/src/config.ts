@@ -81,7 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: env.HOST ?? '127.0.0.1',
     port: Number(env.PORT ?? 3000),
     dataDir: env.DATA_DIR ?? './data',
-    serverName: env.SERVER_NAME ?? 'Gamespeaker',
+    serverName: env.SERVER_NAME ?? 'Gamecoms',
     serverPassword: env.SERVER_PASSWORD!,
     adminPassword,
     sessionSecret,

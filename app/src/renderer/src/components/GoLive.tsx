@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CaptureSource } from '../../../shared/bridge';
-import { app, useApp, setApp } from '../state/store';
+import { app, useApp, setApp, toast } from '../state/store';
+import { ignoreGame } from '../lib/games';
 import { bridge, isDesktop } from '../lib/platform';
 import { RESOLUTIONS_OFFERED, useSettings, updateSettings, type Resolution } from '../lib/settings';
 import { BITRATES, pickCodec, uploadNeeded, type CodecChoice } from '../lib/streaming';
@@ -136,6 +137,20 @@ export function GoLiveModal() {
               <div className="sources">
                 {sources === null && !listError && <div style={{ color: 'var(--mute)' }}>Finding windows…</div>}
                 {sources !== null && shown.length === 0 && <div style={{ color: 'var(--mute)' }}>Nothing to share here.</div>}
+                {game && sources?.some((s) => s.id === game.sourceId) && (
+                  <div className="game-note">
+                    <span><b>{game.name}</b> looks like a game, so it's picked for you.</span>
+                    <button
+                      className="btn-ghost sm"
+                      onClick={() => {
+                        ignoreGame(game);
+                        toast(`${game.name} won't be suggested again. Undo in Settings → App.`);
+                      }}
+                    >
+                      Not a game
+                    </button>
+                  </div>
+                )}
                 {shown.map((s) => (
                   <button key={s.id} className="source" aria-pressed={s.id === selected} onClick={() => setSelected(s.id)}>
                     <span className="thumb">

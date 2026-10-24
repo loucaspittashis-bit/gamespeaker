@@ -1,4 +1,4 @@
-# Gamespeaker
+# Gamecoms
 
 Our own private voice, chat and streaming server. Voice that feels like the same room,
 streams up to 1440p60, chat history that stays, and nobody else on it.
@@ -7,7 +7,7 @@ streams up to 1440p60, chat history that stays, and nobody else on it.
 
 ### Windows
 
-1. Download **Gamespeaker-Setup.exe** from the latest release: [Releases](../../releases/latest).
+1. Download **Gamecoms-Setup.exe** from the latest release: [Releases](../../releases/latest).
 2. Run it. Windows will warn you, because the app isn't signed (signing costs money every year):
    click **More info**, then **Run anyway**. You only see this once; updates install themselves.
 3. Pick a nickname, type the server password you were sent, choose your mic and speakers, and

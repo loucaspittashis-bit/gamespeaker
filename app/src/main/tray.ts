@@ -10,7 +10,7 @@ export function createTray(opts: { show: () => void; quit: () => void; getWindow
   const iconPath = join(here, process.platform === 'darwin' ? '../../build/trayTemplate.png' : '../../build/tray.png');
   const image = nativeImage.createFromPath(iconPath);
   const tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
-  tray.setToolTip('Gamespeaker');
+  tray.setToolTip('Gamecoms');
 
   let state: TrayState = { muted: false, deafened: false, inVoice: false };
   const action = (name: 'toggle-mute' | 'toggle-deafen' | 'disconnect') => {
@@ -21,7 +21,7 @@ export function createTray(opts: { show: () => void; quit: () => void; getWindow
   const render = () => {
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: 'Open Gamespeaker', click: opts.show },
+        { label: 'Open Gamecoms', click: opts.show },
         { type: 'separator' },
         { label: 'Mute', type: 'checkbox', checked: state.muted, click: () => action('toggle-mute') },
         { label: 'Deafen', type: 'checkbox', checked: state.deafened, click: () => action('toggle-deafen') },
@@ -30,7 +30,7 @@ export function createTray(opts: { show: () => void; quit: () => void; getWindow
         { label: 'Quit', click: opts.quit },
       ]),
     );
-    tray.setToolTip(state.inVoice ? `Gamespeaker: in voice${state.muted ? ', muted' : ''}` : 'Gamespeaker');
+    tray.setToolTip(state.inVoice ? `Gamecoms: in voice${state.muted ? ', muted' : ''}` : 'Gamecoms');
   };
 
   tray.on('click', opts.show);

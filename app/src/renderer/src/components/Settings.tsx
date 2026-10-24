@@ -286,7 +286,7 @@ function Keys() {
     <>
       <h1>Keybinds</h1>
       <p className="lead">
-        {isDesktop ? 'Push to talk works while you are in a game, and the game still gets the key. The others work while Gamespeaker is focused.' : 'These work while this tab is focused.'}
+        {isDesktop ? 'Push to talk works while you are in a game, and the game still gets the key. The others work while Gamecoms is focused.' : 'These work while this tab is focused.'}
       </p>
       <div className="card" style={{ padding: '6px 18px' }}>
         {rows.map((r) => (
@@ -394,6 +394,16 @@ function AppSection() {
               title="Show what I'm playing"
               desc="Friends see “Playing …” under your name."
             />
+            {s.ignoredGames.length > 0 && (
+              <div className="ignored-games">
+                <span>Never suggest:</span>
+                {s.ignoredGames.map((exe) => (
+                  <button key={exe} className="chip" title="Suggest it again" onClick={() => updateSettings({ ignoredGames: s.ignoredGames.filter((x) => x !== exe) })}>
+                    {exe} <CloseIcon size="xs" />
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
         {isDesktop && (
@@ -422,7 +432,7 @@ function AppSection() {
         <Card label="Updates">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ flex: 1 }}>
-              Gamespeaker {bridge?.version} ·{' '}
+              Gamecoms {bridge?.version} ·{' '}
               {update.state === 'ready' ? `version ${update.version} is ready` : update.state === 'downloading' ? `downloading (${update.percent}%)` : update.state === 'error' ? 'could not check for updates' : 'up to date'}
             </span>
             {update.state === 'ready' && <button className="btn-neon" onClick={() => void bridge?.installUpdate()}>Restart to update</button>}
@@ -463,7 +473,7 @@ export function SettingsModal() {
             </Fragment>
           ))}
           <div className="ver">
-            <b>Gamespeaker {bridge?.version ?? 'web'}</b>
+            <b>Gamecoms {bridge?.version ?? 'web'}</b>
             <span>{update.state === 'ready' ? 'Update ready · restart to install' : isDesktop ? 'Updates install automatically' : 'Web version'}</span>
           </div>
         </div>

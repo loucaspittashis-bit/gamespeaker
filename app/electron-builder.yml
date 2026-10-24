@@ -1,6 +1,9 @@
 appId: com.gamespeaker.app
-productName: Gamespeaker
-copyright: Gamespeaker
+productName: Gamecoms
+copyright: Gamecoms
+# Shown as Gamecoms everywhere, but the program file keeps its first name so
+# installed copies update in place and "Start with your computer" keeps working.
+executableName: Gamespeaker
 
 directories:
   buildResources: build
@@ -25,12 +28,13 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  artifactName: Gamespeaker-Setup-${version}.${ext}
+  artifactName: Gamecoms-Setup-${version}.${ext}
 
 nsis:
   oneClick: true
   perMachine: false
-  shortcutName: Gamespeaker
+  shortcutName: Gamecoms
+  uninstallDisplayName: Gamecoms
   deleteAppDataOnUninstall: false
 
 mac:
@@ -38,8 +42,8 @@ mac:
   category: public.app-category.social-networking
   target: [dmg]
   extendInfo:
-    NSMicrophoneUsageDescription: Gamespeaker uses your microphone for voice chat.
-    NSAudioCaptureUsageDescription: Gamespeaker can include sound when you go live.
+    NSMicrophoneUsageDescription: Gamecoms uses your microphone for voice chat.
+    NSAudioCaptureUsageDescription: Gamecoms can include sound when you go live.
 
 linux:
   icon: build/icon.png

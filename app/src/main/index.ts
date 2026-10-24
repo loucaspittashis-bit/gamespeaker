@@ -11,6 +11,10 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const isMac = process.platform === 'darwin';
 const isWin = process.platform === 'win32';
 
+// The app was first called Gamespeaker. Keep its data folder (sign-in, device id,
+// settings) where it was, so renaming it doesn't sign anyone out.
+app.setPath('userData', join(app.getPath('appData'), 'Gamespeaker'));
+
 let win: BrowserWindow | null = null;
 let quitting = false;
 let closeToTray = true;
@@ -56,7 +60,7 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0a0b0e',
     autoHideMenuBar: true,
-    title: 'Gamespeaker',
+    title: 'Gamecoms',
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     titleBarOverlay: isMac ? false : { color: '#0a0b0e', symbolColor: '#a7adb8', height: 36 },
     icon: join(here, '../../build/icon.png'),
@@ -91,7 +95,7 @@ function createWindow(): BrowserWindow {
           height: 760,
           backgroundColor: '#000000',
           autoHideMenuBar: true,
-          title: 'Gamespeaker stream',
+          title: 'Gamecoms stream',
         },
       };
     }

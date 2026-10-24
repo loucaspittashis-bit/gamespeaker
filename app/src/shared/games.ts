@@ -72,6 +72,14 @@ export const NOT_GAMES = new Set([
   'obs64.exe', 'vlc.exe', 'mpc-hc64.exe', 'mpc-be64.exe', 'potplayermini64.exe', 'spotify.exe', 'netflix.exe',
   'steam.exe', 'steamwebhelper.exe', 'epicgameslauncher.exe', 'battle.net.exe', 'eadesktop.exe', 'riotclientux.exe', 'leagueclientux.exe',
   'code.exe', 'powerpnt.exe', 'winword.exe', 'excel.exe', 'acrord32.exe', 'acrobat.exe', 'photoshop.exe',
+  // Overlays and helpers that draw over games: GPU software, launchers, recorders, wallpapers.
+  'nvidia overlay.exe', 'nvidia share.exe', 'nvcontainer.exe', 'nvidia app.exe', 'nvidia web helper.exe', 'nvsphelper64.exe',
+  'nvidia geforce experience.exe', 'amdrsserv.exe', 'radeonsoftware.exe', 'amdow.exe', 'amdrssrcext.exe',
+  'gameoverlayui.exe', 'gameoverlayui64.exe', 'igoproxy.exe', 'igoproxy64.exe', 'upc.exe', 'ubisoftconnect.exe',
+  'gamebar.exe', 'gamebarftserver.exe', 'gamebarpresencewriter.exe', 'xboxpcapp.exe', 'widgets.exe',
+  'rtss.exe', 'msiafterburner.exe', 'overwolf.exe', 'overwolfbrowser.exe', 'medal.exe', 'outplayed.exe', 'sharex.exe',
+  'wallpaper32.exe', 'wallpaper64.exe', 'lively.exe', 'rainmeter.exe', 'snippingtool.exe', 'screenclippinghost.exe',
+  'powertoys.exe', 'lghub.exe', 'lghub_agent.exe', 'icue.exe', 'steelseriesgg.exe', 'razer synapse 3.exe', 'armourycrate.exe',
 ]);
 
 export type WindowInfo = {
@@ -84,6 +92,10 @@ export type WindowInfo = {
   fullscreen: boolean;
   /** The window the user is using right now. */
   focused: boolean;
+  /** Has been the focused window while fullscreen: something you actually played. */
+  played: boolean;
+  /** Click-through, tool or never-focused window: an overlay drawn over games, not a game. */
+  overlay: boolean;
 };
 
 export type DetectedGame = { sourceId: string; name: string; exe: string; known: boolean };
@@ -97,8 +109,9 @@ export function identifyGame(w: WindowInfo): DetectedGame | null {
   if ((exe === 'javaw.exe' || exe === 'java.exe') && /^minecraft\b/i.test(w.title)) {
     return { sourceId: w.sourceId, name: 'Minecraft', exe, known: true };
   }
-  // Anything else running fullscreen is probably a game we don't know yet.
-  if (w.fullscreen && exe && !NOT_GAMES.has(exe) && w.title.trim()) {
+  // Anything else you've been playing fullscreen is probably a game we don't know yet.
+  // Overlays (NVIDIA, Steam, Game Bar…) cover the screen too but never take focus.
+  if (w.fullscreen && w.played && !w.overlay && exe && !NOT_GAMES.has(exe) && w.title.trim()) {
     return { sourceId: w.sourceId, name: w.title.trim().slice(0, 60), exe, known: false };
   }
   return null;

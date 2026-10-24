@@ -88,7 +88,7 @@ export const useApp = create<AppState>()(() => ({
   phase: 'welcome',
   gatewayStatus: 'connecting',
   me: null,
-  serverName: 'Gamespeaker',
+  serverName: 'Gamecoms',
   channels: [],
   users: [],
   adminAvailable: false,

@@ -24,7 +24,7 @@ const bridge: GamespeakerBridge = {
     }),
 
   gamesSupported: () => ipcRenderer.invoke('games:supported'),
-  setGameDetection: (enabled) => ipcRenderer.invoke('games:set-enabled', enabled),
+  setGameDetection: (enabled, ignored) => ipcRenderer.invoke('games:set-enabled', enabled, ignored),
   currentGame: () => ipcRenderer.invoke('games:current'),
   onGameDetected: (cb) => listen('games:detected', cb),
 

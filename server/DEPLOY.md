@@ -1,4 +1,4 @@
-# Deploying the Gamespeaker server
+# Deploying the Gamecoms server
 
 This puts the server on a VPS so it runs 24/7: voice and video (LiveKit), login, presence and
 chat (gateway), and HTTPS (Caddy). Setup takes about 20 minutes.
@@ -118,7 +118,7 @@ docker compose logs -f caddy
 ```
 
 Look for `certificate obtained successfully`, then press Ctrl+C. Open
-`https://ourcrew.duckdns.org` in Chrome and you should see the Gamespeaker welcome screen.
+`https://ourcrew.duckdns.org` in Chrome and you should see the Gamecoms welcome screen.
 
 Then set the repository variable `GAMESPEAKER_SERVER_URL` to `https://ourcrew.duckdns.org` on
 GitHub and push a version tag, so the desktop installer is built pointing at your server (see

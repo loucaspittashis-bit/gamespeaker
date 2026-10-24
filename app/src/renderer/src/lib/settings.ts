@@ -61,6 +61,8 @@ export type Settings = {
   detectGames: boolean;
   /** Let friends see "Playing …" under your name. */
   showPlaying: boolean;
+  /** Programs marked "Not a game" (lowercase file names). */
+  ignoredGames: string[];
   /** Your chosen status. "online" goes idle by itself when you're away. */
   status: 'online' | 'idle' | 'dnd';
   customStatus: { emoji: string; text: string; until: number | null } | null;
@@ -107,6 +109,7 @@ const defaults: Settings = {
   soundEffects: true,
   detectGames: true,
   showPlaying: true,
+  ignoredGames: [],
   status: 'online',
   customStatus: null,
   mentionNotifications: true,

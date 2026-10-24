@@ -65,7 +65,7 @@ export function useStreamStats(track: VideoTrack | null, enabled: boolean): stri
 export function popOut(track: VideoTrack, title: string): void {
   const win = window.open('', `gs-popout-${track.sid ?? Date.now()}`, 'width=1280,height=760');
   if (!win) return;
-  win.document.title = `${title} · Gamespeaker`;
+  win.document.title = `${title} · Gamecoms`;
   win.document.body.style.cssText = 'margin:0;background:#000;height:100vh;display:flex;';
   const video = win.document.createElement('video');
   video.autoplay = true;

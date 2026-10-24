@@ -1,10 +1,10 @@
-import { desktopCapturer, ipcMain, session, shell, systemPreferences, type BrowserWindow } from 'electron';
+import { BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPreferences } from 'electron';
 import { nodeRequire } from './native';
 import type { AppAudioStatus, CaptureListResult } from '../shared/bridge';
 
 const SCREEN_PERMISSION_HELP =
-  'macOS needs permission before Gamespeaker can share your screen. Turn it on in System Settings → ' +
-  'Privacy & Security → Screen & System Audio Recording, then quit and reopen Gamespeaker.';
+  'macOS needs permission before Gamecoms can share your screen. Turn it on in System Settings → ' +
+  'Privacy & Security → Screen & System Audio Recording, then quit and reopen Gamecoms.';
 
 // Optional Windows-only native modules. They aren't installed on other platforms.
 type LoopbackCapture = {
@@ -59,11 +59,12 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
       if (isMac && systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
         return { ok: false, reason: 'permission', message: SCREEN_PERMISSION_HELP };
       }
-      const ownTitle = getWindow()?.getTitle();
+      // Never offer our own windows (the app, popped-out streams).
+      const own = new Set(BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId()));
       return {
         ok: true,
         sources: sources
-          .filter((s) => s.name && s.name !== ownTitle && !s.name.startsWith('Gamespeaker stream'))
+          .filter((s) => s.name && !own.has(s.id))
           .map((s) => ({
             id: s.id,
             name: s.name,
@@ -122,7 +123,7 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
       includeTree = true;
       if (!pid) return { ok: false, reason: 'Could not find the program behind that window.' };
     } else {
-      // A whole screen: capture everything except Gamespeaker itself, so voice chat isn't included.
+      // A whole screen: capture everything except this app itself, so voice chat isn't included.
       pid = process.pid;
       includeTree = false;
     }

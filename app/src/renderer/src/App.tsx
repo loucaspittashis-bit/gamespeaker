@@ -45,7 +45,7 @@ function TitleBar() {
   if (!isDesktop) return null;
   return (
     <div className={`titlebar${isMac ? ' mac' : ''}`}>
-      <span>Gamespeaker</span>
+      <span>Gamecoms</span>
       {update.state === 'ready' && (
         <button className="update-pill" onClick={() => void bridge?.installUpdate()}>Update ready · Restart</button>
       )}

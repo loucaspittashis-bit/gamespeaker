@@ -1,4 +1,4 @@
-# Gamespeaker server: LiveKit (voice/video) + gateway (login, presence, chat) + Caddy (HTTPS).
+# Gamecoms server: LiveKit (voice/video) + gateway (login, presence, chat) + Caddy (HTTPS).
 # Everything uses host networking: LiveKit needs direct UDP access and this keeps
 # Caddy -> 127.0.0.1 proxying simple. Only Caddy (80/443) and LiveKit media
 # (7881/tcp, 7882/udp) are reachable from outside; the firewall blocks the rest.

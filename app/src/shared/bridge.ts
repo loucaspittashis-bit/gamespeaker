@@ -49,7 +49,8 @@ export interface GamespeakerBridge {
 
   /** Game detection (Windows): which game is open, for one-click streaming and "Playing …". */
   gamesSupported(): Promise<boolean>;
-  setGameDetection(enabled: boolean): Promise<void>;
+  /** `ignored`: program names (e.g. "nvidia overlay.exe") the user marked "Not a game". */
+  setGameDetection(enabled: boolean, ignored: string[]): Promise<void>;
   currentGame(): Promise<DetectedGame | null>;
   onGameDetected(cb: (game: DetectedGame | null) => void): () => void;
 

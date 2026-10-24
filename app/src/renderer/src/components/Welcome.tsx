@@ -72,7 +72,7 @@ export function Welcome() {
       <section className="hero">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span className="logo" style={{ width: 46, height: 46, borderRadius: 14 }}><LogoIcon size="l" /></span>
-          <span className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Gamespeaker</span>
+          <span className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Gamecoms</span>
         </div>
         <h1>Your crew's own <span>voice server.</span></h1>
         <p>Private voice, chat and streams for you and your friends. No accounts, no ads, nobody else.</p>

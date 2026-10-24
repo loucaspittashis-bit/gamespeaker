@@ -1,7 +1,7 @@
 import type { DetectedGame } from '../../../shared/bridge';
 import { app, setApp } from '../state/store';
 import { bridge } from './platform';
-import { settings, useSettings } from './settings';
+import { settings, updateSettings, useSettings } from './settings';
 import { startStream } from './voice';
 
 let started = false;
@@ -23,13 +23,20 @@ export function initGames(onChange: () => void): void {
       onChange();
     });
     useSettings.subscribe((s, prev) => {
-      if (s.detectGames !== prev.detectGames) void b.setGameDetection(s.detectGames);
+      if (s.detectGames !== prev.detectGames || s.ignoredGames !== prev.ignoredGames) void b.setGameDetection(s.detectGames, s.ignoredGames);
       if (s.showPlaying !== prev.showPlaying) onChange();
     });
-    await b.setGameDetection(settings().detectGames);
+    await b.setGameDetection(settings().detectGames, settings().ignoredGames);
     setApp({ game: await b.currentGame() });
     onChange();
   });
+}
+
+/** "Not a game": never suggest this program again. */
+export function ignoreGame(game: DetectedGame): void {
+  const s = settings();
+  if (!s.ignoredGames.includes(game.exe)) updateSettings({ ignoredGames: [...s.ignoredGames, game.exe] });
+  setApp({ game: null });
 }
 
 /** What friends see under your name, if you let them. */

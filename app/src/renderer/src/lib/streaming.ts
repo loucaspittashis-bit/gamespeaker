@@ -53,7 +53,7 @@ export async function pickCodec(res: Resolution, fps: number, pref: 'auto' | 'h2
 
 // ---- Per-app stream sound (Windows desktop) ----
 // The main process captures one program's audio (or everything except
-// Gamespeaker) as 16-bit stereo PCM and streams it here; an AudioWorklet turns
+// this app) as 16-bit stereo PCM and streams it here; an AudioWorklet turns
 // it back into a MediaStreamTrack we can publish.
 
 const PCM_PLAYER = `
