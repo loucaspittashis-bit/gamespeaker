@@ -75,6 +75,8 @@ export type AppState = {
   deafened: boolean;
   micLevel: MicLevel;
   myLive: LiveInfo | null;
+  /** How your own stream is doing: the quality it's sending now, and why it's lower if it is. */
+  streamHealth: { tier: string; chosen: string; reason: 'upload' | 'pc' | null } | null;
 
   chatOpen: boolean;
   fullscreen: boolean;
@@ -122,6 +124,7 @@ export const useApp = create<AppState>()(() => ({
   deafened: false,
   micLevel: { db: -100, open: false, threshold: -50 },
   myLive: null,
+  streamHealth: null,
 
   chatOpen: true,
   fullscreen: false,

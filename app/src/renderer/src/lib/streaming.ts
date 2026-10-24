@@ -1,24 +1,9 @@
 import type { VideoCodec } from 'livekit-client';
 import { bridge } from './platform';
 import type { Resolution } from './settings';
+import { BITRATES, RESOLUTIONS } from './quality';
 
-export const RESOLUTIONS: Record<Resolution, { width: number; height: number }> = {
-  '720p': { width: 1280, height: 720 },
-  '1080p': { width: 1920, height: 1080 },
-  '1440p': { width: 2560, height: 1440 },
-};
-
-/** Target bitrates in Mbps. Viewers' connections decide how much of this they get. */
-export const BITRATES: Record<Resolution, Record<30 | 60, number>> = {
-  '720p': { 30: 3, 60: 5 },
-  '1080p': { 30: 5, 60: 8 },
-  '1440p': { 30: 10, 60: 16 },
-};
-
-/** Upload the streamer needs: the main stream plus the small preview layer and overhead. */
-export function uploadNeeded(mbps: number): number {
-  return Math.ceil(mbps * 1.1 + 1);
-}
+export { BITRATES, RESOLUTIONS, uploadNeeded } from './quality';
 
 export type CodecChoice = { codec: VideoCodec; label: string; hardware: boolean };
 

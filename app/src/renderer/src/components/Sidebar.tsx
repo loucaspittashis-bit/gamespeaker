@@ -211,6 +211,29 @@ function StatusCard() {
         </button>
       </div>
       <GoLiveButton variant="side" />
+      <StreamHealthLine />
+    </div>
+  );
+}
+
+/** While you're live: the quality you're really sending, and why if it's lower than you chose. */
+function StreamHealthLine() {
+  const h = useApp((s) => s.streamHealth);
+  const live = useApp((s) => Boolean(s.myLive));
+  if (!live || !h) return null;
+  const lowered = h.tier !== h.chosen;
+  const advice =
+    h.reason === 'pc'
+      ? 'Your PC is working hard (the game, recording or another stream). Close other apps or pick a lower quality.'
+      : 'Something else is using your upload (another stream, a download, cloud sync). It goes back up when there is room.';
+  return (
+    <div className={`stream-health ${lowered ? 'low' : 'ok'}`} title={lowered ? advice : `Sending ${h.tier} as chosen.`}>
+      <i />
+      {lowered ? (
+        <span><b>{h.tier}</b> for now · {h.reason === 'pc' ? 'your PC is busy' : 'your upload is busy'}</span>
+      ) : (
+        <span>Sending <b>{h.tier}</b> · all good</span>
+      )}
     </div>
   );
 }

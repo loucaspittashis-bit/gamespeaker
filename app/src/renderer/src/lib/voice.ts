@@ -18,7 +18,8 @@ import { MicPipeline, type MicOptions } from './mic';
 import { bridge, isDesktop } from './platform';
 import { settings, useSettings, type Resolution } from './settings';
 import { sounds } from './sounds';
-import { BITRATES, RESOLUTIONS, pickCodec, startAppAudio, type AppAudio } from './streaming';
+import { pickCodec, startAppAudio, type AppAudio } from './streaming';
+import { AutoQuality, BITRATES, MIDDLE_LAYER_MBPS, RESOLUTIONS, ladder, tierLabel, type Sample, type Tier } from './quality';
 
 // One voice channel at a time: a LiveKit room, our processed mic, remote audio
 // playback with per-person volume, and Go Live streams.
@@ -526,8 +527,11 @@ export async function startStream(req: StreamRequest): Promise<boolean> {
       {
         videoCodec: codec.codec,
         screenShareEncoding: { maxBitrate: mbps * 1_000_000, maxFramerate: req.fps, priority: 'high' },
-        screenShareSimulcastLayers: [new VideoPreset(640, 360, 600_000, 15)],
-        degradationPreference: req.mode === 'game' ? 'maintain-framerate' : 'maintain-resolution',
+        // Never below 720p: the only backup layer is 720p (none for a 720p stream),
+        // and the picture keeps its size under pressure; auto quality steps it down.
+        simulcast: req.res !== '720p',
+        screenShareSimulcastLayers: req.res === '720p' ? [] : [new VideoPreset(1280, 720, MIDDLE_LAYER_MBPS[req.fps] * 1_000_000, req.fps)],
+        degradationPreference: 'maintain-resolution',
       },
     );
   } catch (err) {
@@ -560,19 +564,100 @@ export async function startStream(req: StreamRequest): Promise<boolean> {
     }
   }
 
-  const quality = `${req.res}${req.fps} · ${codec.label}${codec.hardware ? '' : ' (CPU)'} · ${mbps} Mbps`;
+  const quality = qualityText({ res: req.res, fps: req.fps, mbps }, codec, false);
   // Show your own preview, next to whatever you're already watching.
   const me = r.localParticipant.identity;
   const watchingOther = app().focus && app().focus !== me;
   setApp(watchingOther ? { myLive: { title, quality }, focus2: me } : { myLive: { title, quality }, focus: me });
   sounds.streamStart();
+  if (pub.track) startAutoQuality(pub.track as LocalVideoTrack, req, codec);
   refresh();
   notify();
   return true;
 }
 
+function qualityText(t: Tier, codec: { label: string; hardware: boolean }, auto: boolean): string {
+  return `${tierLabel(t)}${auto ? ' (auto)' : ''} · ${codec.label}${codec.hardware ? '' : ' (CPU)'} · ${t.mbps} Mbps`;
+}
+
+// ---- Auto quality ----
+// Every 2 seconds, look at how the outgoing stream is doing. If the upload or
+// the PC holds it back for a few seconds, step down a level (never below 720p);
+// when there's clearly room again, step back up.
+
+let qualityTimer: number | null = null;
+
+function stopAutoQuality(): void {
+  if (qualityTimer) window.clearInterval(qualityTimer);
+  qualityTimer = null;
+}
+
+/** Points the top layer of the stream at a quality level. */
+async function applyTier(track: LocalVideoTrack, topIndex: number, tier: Tier, sourceHeight: number): Promise<void> {
+  const sender = track.sender;
+  if (!sender) return;
+  const params = sender.getParameters();
+  const top = params.encodings?.[topIndex];
+  if (!top) return;
+  top.scaleResolutionDownBy = Math.max(1, sourceHeight / RESOLUTIONS[tier.res].height);
+  top.maxBitrate = tier.mbps * 1_000_000;
+  top.maxFramerate = tier.fps;
+  await sender.setParameters(params).catch(() => {});
+}
+
+function startAutoQuality(track: LocalVideoTrack, req: StreamRequest, codec: { label: string; hardware: boolean }): void {
+  stopAutoQuality();
+  const auto = new AutoQuality(ladder(req.res, req.fps));
+  const chosen = tierLabel(auto.tier);
+  setApp({ streamHealth: { tier: chosen, chosen, reason: null } });
+  if (auto.tiers.length < 2) return;
+
+  // The full-quality layer is the one allowed the most bitrate.
+  const encodings = track.sender?.getParameters().encodings ?? [];
+  const topIndex = encodings.reduce((best, e, i) => ((e.maxBitrate ?? 0) > (encodings[best]?.maxBitrate ?? 0) ? i : best), 0);
+  const sourceHeight = () => track.mediaStreamTrack.getSettings().height ?? RESOLUTIONS[req.res].height;
+  let told = false;
+
+  qualityTimer = window.setInterval(async () => {
+    const report = await track.sender?.getStats().catch(() => null);
+    if (!report) return;
+    let limitedBy: Sample['limitedBy'] = 'none';
+    let available = 0;
+    let sending = false;
+    report.forEach((s: any) => {
+      if (s.type === 'outbound-rtp' && s.kind === 'video' && (s.framesPerSecond ?? 0) > 0) {
+        sending = true;
+        if (s.qualityLimitationReason === 'bandwidth') limitedBy = 'bandwidth';
+        else if (s.qualityLimitationReason === 'cpu' && limitedBy === 'none') limitedBy = 'cpu';
+      }
+      if (s.type === 'candidate-pair' && s.nominated && s.availableOutgoingBitrate) available = s.availableOutgoingBitrate / 1e6;
+    });
+    // Nobody watching means nothing is sent, and nothing to judge.
+    if (!sending || !auto.next({ limitedBy, available })) return;
+
+    await applyTier(track, topIndex, auto.tier, sourceHeight());
+    const now = tierLabel(auto.tier);
+    setApp((s) => ({
+      streamHealth: { tier: now, chosen, reason: auto.reason },
+      myLive: s.myLive ? { ...s.myLive, quality: qualityText(auto.tier, codec, auto.lowered) } : null,
+    }));
+    notify();
+    if (auto.lowered && !told) {
+      told = true;
+      toast(
+        auto.reason === 'pc'
+          ? `Your PC is busy, so your stream stepped down to ${now} to stay smooth.`
+          : `Your upload is busy, so your stream stepped down to ${now}. It goes back up when there's room.`,
+        'warn',
+      );
+    }
+  }, 2000);
+}
+
 export async function stopStream(silent = false): Promise<void> {
   const r = room;
+  stopAutoQuality();
+  setApp({ streamHealth: null });
   if (appAudioPub?.track && r) await r.localParticipant.unpublishTrack(appAudioPub.track, true).catch(() => {});
   appAudioPub = null;
   const audio = appAudio;

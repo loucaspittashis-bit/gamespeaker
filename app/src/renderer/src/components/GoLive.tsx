@@ -83,7 +83,7 @@ export function GoLiveModal() {
   const shown = (sources ?? []).filter((s) => s.kind === tab);
   const chosen = sources?.find((s) => s.id === selected) ?? null;
   const mbps = BITRATES[res][fps];
-  const upload = uploadNeeded(mbps);
+  const upload = uploadNeeded(res, fps);
 
   const game = useApp((s) => s.game);
 
@@ -198,7 +198,11 @@ export function GoLiveModal() {
                 <button aria-pressed={mode === 'game'} onClick={() => setMode('game')}>Smooth motion</button>
                 <button aria-pressed={mode === 'screen'} onClick={() => setMode('screen')}>Sharp text</button>
               </div>
-              <div className="hint">{mode === 'game' ? 'For games. Keeps the frame rate up when the connection dips.' : 'For code, docs and browsing. Keeps text crisp.'}</div>
+              <div className="hint">
+                {mode === 'game'
+                  ? 'For games. If your upload gets busy it steps down to 1080p or 720p and comes back up, never below 720p.'
+                  : 'For code, docs and browsing. Keeps text crisp.'}
+              </div>
             </div>
             <div>
               <div className="label" style={{ marginBottom: 8 }}>Sound</div>
