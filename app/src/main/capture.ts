@@ -2,6 +2,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPre
 import { nodeRequire } from './native';
 import { win32 } from './win32';
 import type { AppAudioStatus, CaptureListResult, CaptureSource } from '../shared/bridge';
+import { familyOf, inFamily, pickFamilyWindow, type Family } from '../shared/games';
 
 const SCREEN_PERMISSION_HELP =
   'macOS needs permission before Gamecoms can share your screen. Turn it on in System Settings → ' +
@@ -57,6 +58,22 @@ async function windowsItMissed(listed: Set<number>): Promise<CaptureSource[]> {
 }
 
 let selectedSourceId: string | null = null;
+/** The game (and its client/launcher) the current stream follows. */
+let followFamily: Family | null = null;
+
+/** The best open window in the followed family: the game if it's open, else its client. */
+function findFamilyWindow(): { id: string; isGame: boolean } | null {
+  if (!win32 || !followFamily) return null;
+  const family = followFamily;
+  const candidates: { id: string; exePath: string; area: number }[] = [];
+  for (const w of win32.topWindows()) {
+    if (w.pid === process.pid || w.minimized || w.cloaked || w.width < 200 || w.height < 150) continue;
+    if (SHELL_CLASSES.has(w.className) || (w.overlay && win32.isFullscreen(w.hwnd))) continue;
+    const exePath = win32.exePathOf(w.pid);
+    if (exePath && inFamily(family, exePath)) candidates.push({ id: `window:${w.hwnd}:0`, exePath, area: w.width * w.height });
+  }
+  return pickFamilyWindow(candidates);
+}
 let capture: LoopbackCapture | null = null;
 
 function stopAppAudio(): void {
@@ -128,6 +145,27 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
     },
     { useSystemPicker: false },
   );
+
+  // Follow the game: remember which program family the stream started on.
+  ipcMain.handle('capture:follow-start', (_e, sourceId: string) => {
+    followFamily = null;
+    const hwnd = Number(/^window:(\d+):/.exec(String(sourceId))?.[1] ?? 0);
+    if (!win32 || !hwnd) return false;
+    const exePath = win32.exePathOf(win32.pidOf(hwnd));
+    if (!exePath) return false;
+    followFamily = familyOf(exePath);
+    return true;
+  });
+  ipcMain.handle('capture:follow-find', () => {
+    try {
+      return findFamilyWindow();
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle('capture:follow-stop', () => {
+    followFamily = null;
+  });
 
   ipcMain.handle('capture:app-audio-supported', () => Boolean(loopbackModule));
 

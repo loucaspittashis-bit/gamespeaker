@@ -82,6 +82,53 @@ export const NOT_GAMES = new Set([
   'powertoys.exe', 'lghub.exe', 'lghub_agent.exe', 'icue.exe', 'steelseriesgg.exe', 'razer synapse 3.exe', 'armourycrate.exe',
 ]);
 
+/**
+ * Programs that belong together: a game and its client or launcher. While you
+ * stream one, the stream follows to another when a window closes (the League
+ * match ends and the client comes back, and the other way round).
+ */
+export const GAME_FAMILIES: string[][] = [
+  ['league of legends.exe', 'leagueclientux.exe', 'leagueclient.exe', 'riotclientux.exe'],
+  ['valorant-win64-shipping.exe', 'riotclientux.exe'],
+  ['battle.net.exe', 'overwatch.exe', 'wow.exe', 'diablo iv.exe', 'cod.exe', 'blackops6.exe', 'hearthstone.exe'],
+  ['epicgameslauncher.exe', 'fortniteclient-win64-shipping.exe', 'rocketleague.exe'],
+  ['eadesktop.exe', 'fc25.exe', 'fc26.exe', 'bf2042.exe', 'bf6.exe'],
+  ['upc.exe', 'ubisoftconnect.exe', 'rainbowsix.exe', 'rainbowsix_vulkan.exe'],
+];
+
+export type Family = { exes: Set<string>; installRoot: string | null };
+
+const lowerName = (path: string) => (path.split(/[\\/]/).pop() ?? '').toLowerCase();
+
+/** The family of the program at `exePath`: its known relatives and its install folder. */
+export function familyOf(exePath: string): Family {
+  const exe = lowerName(exePath);
+  const exes = new Set([exe]);
+  for (const f of GAME_FAMILIES) if (f.includes(exe)) f.forEach((e) => exes.add(e));
+  // One folder up from the program, e.g. C:\Riot Games\League of Legends for ...\Game\League of Legends.exe,
+  // but never something as broad as C:\Program Files.
+  const parts = exePath.split(/[\\/]/).filter(Boolean);
+  const root = parts.slice(0, -2);
+  const broad = /^(program files( \(x86\))?|windows|users)$/i;
+  const installRoot = root.length >= 2 && !broad.test(root[root.length - 1]!) ? root.join('\\').toLowerCase() : null;
+  return { exes, installRoot };
+}
+
+export function inFamily(f: Family, exePath: string): boolean {
+  if (f.exes.has(lowerName(exePath))) return true;
+  return f.installRoot !== null && exePath.split(/[\\/]/).filter(Boolean).join('\\').toLowerCase().startsWith(f.installRoot + '\\');
+}
+
+/** A known game's window beats its client; then the bigger window. */
+export function pickFamilyWindow(windows: { id: string; exePath: string; area: number }[]): { id: string; isGame: boolean } | null {
+  let best: { id: string; isGame: boolean; area: number } | null = null;
+  for (const w of windows) {
+    const isGame = Boolean(KNOWN_GAMES[lowerName(w.exePath)]);
+    if (!best || (isGame && !best.isGame) || (isGame === best.isGame && w.area > best.area)) best = { id: w.id, isGame, area: w.area };
+  }
+  return best && { id: best.id, isGame: best.isGame };
+}
+
 export type WindowInfo = {
   /** Capture source id, e.g. "window:1234:0". */
   sourceId: string;

@@ -571,6 +571,7 @@ export async function startStream(req: StreamRequest): Promise<boolean> {
   setApp(watchingOther ? { myLive: { title, quality }, focus2: me } : { myLive: { title, quality }, focus: me });
   sounds.streamStart();
   if (pub.track) startAutoQuality(pub.track as LocalVideoTrack, req, codec);
+  if (pub.track && bridge && req.sourceId?.startsWith('window:')) void startFollowing(pub.track as LocalVideoTrack, req);
   refresh();
   notify();
   return true;
@@ -578,6 +579,160 @@ export async function startStream(req: StreamRequest): Promise<boolean> {
 
 function qualityText(t: Tier, codec: { label: string; hardware: boolean }, auto: boolean): string {
   return `${tierLabel(t)}${auto ? ' (auto)' : ''} · ${codec.label}${codec.hardware ? '' : ' (CPU)'} · ${t.mbps} Mbps`;
+}
+
+// ---- Follow the game ----
+// A game's window closes when a match ends (League goes back to its client).
+// Instead of ending the stream, move it to the same game's other window, and
+// back to the game when the next match opens. With nothing to show, hold a
+// "Waiting for the game" picture for a minute before ending.
+
+type Following = {
+  track: LocalVideoTrack;
+  req: StreamRequest;
+  current: string;
+  seen: Set<string>;
+  waiting: { track: MediaStreamTrack; stop: () => void; since: number } | null;
+  timer: number;
+  busy: boolean;
+};
+
+let following: Following | null = null;
+const FOLLOW_EVERY_MS = 3000;
+const WAIT_FOR_GAME_MS = 60_000;
+
+/** A video track of one window, with no click needed (getDisplayMedia may want one). */
+async function captureWindow(sourceId: string, req: StreamRequest): Promise<MediaStreamTrack> {
+  const { width, height } = RESOLUTIONS[req.res];
+  await bridge!.selectCaptureSource(sourceId);
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: { width, height, frameRate: req.fps }, audio: false });
+  } catch {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId, maxWidth: width, maxHeight: height, maxFrameRate: req.fps } },
+    } as unknown as MediaStreamConstraints);
+  }
+  const track = stream.getVideoTracks()[0]!;
+  track.contentHint = req.mode === 'game' ? 'motion' : 'detail';
+  return track;
+}
+
+/** The voice library ends the stream when the captured window closes; handle that here instead. */
+function watchCaptureEnd(f: Following): void {
+  const lk = f.track as unknown as { handleEnded?: EventListener };
+  if (lk.handleEnded) f.track.mediaStreamTrack.removeEventListener('ended', lk.handleEnded);
+  f.track.mediaStreamTrack.addEventListener('ended', () => void onCaptureEnded(f), { once: true });
+}
+
+function waitingPicture(title: string): { track: MediaStreamTrack; stop: () => void; since: number } {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1280;
+  canvas.height = 720;
+  const ctx = canvas.getContext('2d')!;
+  const draw = () => {
+    ctx.fillStyle = '#0a0b0e';
+    ctx.fillRect(0, 0, 1280, 720);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#eef0f4';
+    ctx.font = '700 46px system-ui, sans-serif';
+    ctx.fillText('Waiting for the game…', 640, 345);
+    ctx.fillStyle = '#8b919d';
+    ctx.font = '500 28px system-ui, sans-serif';
+    ctx.fillText(title, 640, 400);
+  };
+  draw();
+  // The picture has to be redrawn to keep sending frames.
+  const timer = window.setInterval(draw, 500);
+  const track = canvas.captureStream(4).getVideoTracks()[0]!;
+  return { track, since: Date.now(), stop: () => { window.clearInterval(timer); track.stop(); } };
+}
+
+/** Moves the live stream (and its game sound) to another window, without viewers noticing. */
+async function switchCapture(f: Following, sourceId: string): Promise<void> {
+  const next = await captureWindow(sourceId, f.req);
+  const old = f.track.mediaStreamTrack;
+  await f.track.replaceTrack(next, true);
+  if (old !== f.waiting?.track) old.stop();
+  f.waiting?.stop();
+  f.waiting = null;
+  f.current = sourceId;
+  f.seen.add(sourceId);
+  watchCaptureEnd(f);
+  await reapplyQuality?.();
+  // The game's own sound follows the window.
+  const r = room;
+  if (appAudio && appAudioPub?.track && r) {
+    await appAudio.stop();
+    const audio = await startAppAudio(sourceId);
+    if ('error' in audio) {
+      appAudio = null;
+      await r.localParticipant.unpublishTrack(appAudioPub.track, true).catch(() => {});
+      appAudioPub = null;
+    } else {
+      appAudio = audio;
+      await appAudioPub.track.replaceTrack(audio.track, true).catch(() => {});
+    }
+  }
+}
+
+async function onCaptureEnded(f: Following): Promise<void> {
+  if (following !== f) return;
+  const found = await bridge!.followFind().catch(() => null);
+  try {
+    if (found && found.id !== f.current) {
+      await switchCapture(f, found.id);
+      return;
+    }
+  } catch {
+    // fall through to waiting
+  }
+  // Nothing to show yet: hold a waiting picture; the next check picks the game up.
+  f.waiting = waitingPicture(app().myLive?.title ?? '');
+  await f.track.replaceTrack(f.waiting.track, true).catch(() => {});
+}
+
+async function followTick(f: Following): Promise<void> {
+  if (following !== f || f.busy) return;
+  f.busy = true;
+  try {
+    const found = await bridge!.followFind().catch(() => null);
+    if (f.waiting) {
+      if (found) await switchCapture(f, found.id);
+      else if (Date.now() - f.waiting.since > WAIT_FOR_GAME_MS) {
+        await stopStream();
+        toast('The game closed, so your stream ended.');
+      }
+    } else if (found?.isGame && found.id !== f.current && !f.seen.has(found.id)) {
+      // A new match opened while you streamed the client: show the game.
+      await switchCapture(f, found.id);
+    }
+  } catch {
+    // try again next time
+  } finally {
+    f.busy = false;
+  }
+}
+
+async function startFollowing(track: LocalVideoTrack, req: StreamRequest): Promise<void> {
+  stopFollowing();
+  if (!(await bridge!.followStart(req.sourceId!).catch(() => false))) return;
+  const f: Following = { track, req, current: req.sourceId!, seen: new Set([req.sourceId!]), waiting: null, timer: 0, busy: false };
+  // Game windows already open don't pull the stream away from what you picked.
+  const open = await bridge!.followFind().catch(() => null);
+  if (open) f.seen.add(open.id);
+  f.timer = window.setInterval(() => void followTick(f), FOLLOW_EVERY_MS);
+  following = f;
+  watchCaptureEnd(f);
+}
+
+function stopFollowing(): void {
+  if (!following) return;
+  window.clearInterval(following.timer);
+  following.waiting?.stop();
+  following = null;
+  void bridge?.followStop();
 }
 
 // ---- Auto quality ----
@@ -590,9 +745,13 @@ let qualityTimer: number | null = null;
 function stopAutoQuality(): void {
   if (qualityTimer) window.clearInterval(qualityTimer);
   qualityTimer = null;
+  reapplyQuality = null;
 }
 
-/** Points the top layer of the stream at a quality level. */
+/**
+ * Points the top layer of the stream at a quality level, and keeps the backup
+ * layer at 720p for whatever size the captured window is.
+ */
 async function applyTier(track: LocalVideoTrack, topIndex: number, tier: Tier, sourceHeight: number): Promise<void> {
   const sender = track.sender;
   if (!sender) return;
@@ -602,20 +761,28 @@ async function applyTier(track: LocalVideoTrack, topIndex: number, tier: Tier, s
   top.scaleResolutionDownBy = Math.max(1, sourceHeight / RESOLUTIONS[tier.res].height);
   top.maxBitrate = tier.mbps * 1_000_000;
   top.maxFramerate = tier.fps;
+  params.encodings.forEach((e, i) => {
+    if (i !== topIndex) e.scaleResolutionDownBy = Math.max(1, sourceHeight / RESOLUTIONS['720p'].height);
+  });
   await sender.setParameters(params).catch(() => {});
 }
+
+/** Re-sizes the stream's layers after the captured window changed (follow the game). */
+let reapplyQuality: (() => Promise<void>) | null = null;
 
 function startAutoQuality(track: LocalVideoTrack, req: StreamRequest, codec: { label: string; hardware: boolean }): void {
   stopAutoQuality();
   const auto = new AutoQuality(ladder(req.res, req.fps));
   const chosen = tierLabel(auto.tier);
   setApp({ streamHealth: { tier: chosen, chosen, reason: null } });
-  if (auto.tiers.length < 2) return;
 
   // The full-quality layer is the one allowed the most bitrate.
   const encodings = track.sender?.getParameters().encodings ?? [];
   const topIndex = encodings.reduce((best, e, i) => ((e.maxBitrate ?? 0) > (encodings[best]?.maxBitrate ?? 0) ? i : best), 0);
   const sourceHeight = () => track.mediaStreamTrack.getSettings().height ?? RESOLUTIONS[req.res].height;
+  reapplyQuality = () => applyTier(track, topIndex, auto.tier, sourceHeight());
+  void reapplyQuality();
+  if (auto.tiers.length < 2) return;
   let told = false;
 
   qualityTimer = window.setInterval(async () => {
@@ -656,6 +823,7 @@ function startAutoQuality(track: LocalVideoTrack, req: StreamRequest, codec: { l
 
 export async function stopStream(silent = false): Promise<void> {
   const r = room;
+  stopFollowing();
   stopAutoQuality();
   setApp({ streamHealth: null });
   if (appAudioPub?.track && r) await r.localParticipant.unpublishTrack(appAudioPub.track, true).catch(() => {});

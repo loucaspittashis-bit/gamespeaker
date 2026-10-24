@@ -15,6 +15,10 @@ const bridge: GamespeakerBridge = {
   openScreenPermissionSettings: () => ipcRenderer.invoke('capture:open-permission-settings'),
   selectCaptureSource: (id) => ipcRenderer.invoke('capture:select', id),
 
+  followStart: (sourceId) => ipcRenderer.invoke('capture:follow-start', sourceId),
+  followFind: () => ipcRenderer.invoke('capture:follow-find'),
+  followStop: () => ipcRenderer.invoke('capture:follow-stop'),
+
   appAudioSupported: () => ipcRenderer.invoke('capture:app-audio-supported'),
   startAppAudio: (sourceId) => ipcRenderer.invoke('capture:start-app-audio', sourceId),
   stopAppAudio: () => ipcRenderer.invoke('capture:stop-app-audio'),

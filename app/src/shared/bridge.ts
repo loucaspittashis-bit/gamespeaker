@@ -42,6 +42,14 @@ export interface GamespeakerBridge {
   /** The source the next getDisplayMedia call should capture. */
   selectCaptureSource(id: string): Promise<void>;
 
+  /**
+   * Follow the game (Windows): when the streamed window closes, the stream moves
+   * to the same game's other window (match ↔ client) instead of ending.
+   */
+  followStart(sourceId: string): Promise<boolean>;
+  followFind(): Promise<{ id: string; isGame: boolean } | null>;
+  followStop(): Promise<void>;
+
   /** Per-app stream audio (Windows): only the game's sound, or everything except this app. */
   appAudioSupported(): Promise<boolean>;
   startAppAudio(sourceId: string): Promise<AppAudioStatus>;
