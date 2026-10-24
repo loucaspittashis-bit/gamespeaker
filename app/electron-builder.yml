@@ -1,0 +1,52 @@
+appId: com.gamespeaker.app
+productName: Gamespeaker
+copyright: Gamespeaker
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - out/**
+  - build/icon.png
+  - build/tray*.png
+  - package.json
+  - '!**/*.map'
+
+# All native addons are N-API with prebuilt binaries, so no rebuild for Electron is needed.
+npmRebuild: false
+asarUnpack:
+  - node_modules/uiohook-napi/**
+  - node_modules/loopback-capture/**
+  - node_modules/koffi/**
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Gamespeaker-Setup-${version}.${ext}
+
+nsis:
+  oneClick: true
+  perMachine: false
+  shortcutName: Gamespeaker
+  deleteAppDataOnUninstall: false
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.social-networking
+  target: [dmg]
+  extendInfo:
+    NSMicrophoneUsageDescription: Gamespeaker uses your microphone for voice chat.
+    NSAudioCaptureUsageDescription: Gamespeaker can include sound when you go live.
+
+linux:
+  icon: build/icon.png
+  target: [AppImage]
+  category: Network
+
+# The release workflow sets owner/repo with -c.publish.owner / -c.publish.repo.
+publish:
+  provider: github
+  releaseType: release

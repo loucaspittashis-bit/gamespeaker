@@ -1,0 +1,14 @@
+node_modules/
+.env
+*.local.env
+server/gateway/data/
+server/.local/
+# Built web client: run `npm run build:web` in app/ (see server/DEPLOY.md).
+server/web/*
+!server/web/.gitkeep
+app/out/
+app/dist/
+dist/
+out/
+.DS_Store
+*.log

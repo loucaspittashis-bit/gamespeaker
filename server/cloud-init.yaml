@@ -1,0 +1,47 @@
+#cloud-config
+# Paste this into Hetzner's "Cloud config" box when creating the server.
+# It installs Docker from Ubuntu's own packages (so security updates arrive
+# automatically), turns on unattended upgrades with a nightly reboot window,
+# locks SSH to keys only, and opens only the ports Gamespeaker needs.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose-v2
+  - ufw
+  - unattended-upgrades
+  - fail2ban
+  - rsync
+
+write_files:
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  - path: /etc/apt/apt.conf.d/52gamespeaker-upgrades
+    content: |
+      // Reboot at 05:00 server time when an update needs it (kernel etc.).
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "05:00";
+  - path: /etc/ssh/sshd_config.d/10-gamespeaker.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+runcmd:
+  - systemctl enable --now docker
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+  - ufw allow 7881/tcp
+  - ufw allow 7882/udp
+  - ufw --force enable
+  - systemctl enable --now fail2ban
+  - systemctl restart ssh
+  - mkdir -p /opt/gamespeaker

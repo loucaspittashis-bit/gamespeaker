@@ -1,0 +1,14 @@
+{
+  "name": "gamespeaker-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end check: bots log in through the gateway and exchange audio/video through LiveKit",
+  "type": "module",
+  "scripts": {
+    "e2e": "node --disable-warning=ExperimentalWarning e2e.ts",
+    "bot": "node --disable-warning=ExperimentalWarning bot.ts"
+  },
+  "dependencies": {
+    "@livekit/rtc-node": "1.2.1"
+  }
+}

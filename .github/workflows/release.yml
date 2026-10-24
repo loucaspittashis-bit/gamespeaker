@@ -1,0 +1,62 @@
+# Builds the Windows installer and publishes it to GitHub Releases, where the
+# app's auto-updater finds it.
+#
+# One-time setup (repo Settings -> Secrets and variables -> Actions):
+#   Variables:
+#     GAMESPEAKER_SERVER_URL  https://yourname.duckdns.org   (baked into the app)
+#     RELEASE_REPO            optional: a separate PUBLIC repo for installers, e.g. gamespeaker-releases
+#   Secrets:
+#     RELEASE_TOKEN           only if RELEASE_REPO is set: a token with "Contents: write" on that repo
+#
+# Release: bump "version" in app/package.json, commit, then
+#   git tag v0.1.0 && git push origin v0.1.0
+name: Release desktop app
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      GAMESPEAKER_SERVER_URL: ${{ vars.GAMESPEAKER_SERVER_URL }}
+      RELEASE_OWNER: ${{ github.repository_owner }}
+      RELEASE_REPO: ${{ vars.RELEASE_REPO || github.event.repository.name }}
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Check the server address is set
+        shell: bash
+        run: |
+          if [ -z "$GAMESPEAKER_SERVER_URL" ]; then
+            echo "::error::Set the GAMESPEAKER_SERVER_URL repository variable (e.g. https://yourname.duckdns.org)"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx electron-vite build
+
+      - name: Package and publish
+        run: npx electron-builder --win --publish always -c.publish.owner=$env:RELEASE_OWNER -c.publish.repo=$env:RELEASE_REPO
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: app/dist/*.exe
+          if-no-files-found: error

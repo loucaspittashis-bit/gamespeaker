@@ -1,0 +1,35 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# LiveKit signalling (WebSocket). Media itself goes direct over UDP 7882 / TCP 7881.
+	@livekit path /rtc /rtc/*
+	handle @livekit {
+		reverse_proxy 127.0.0.1:7880
+	}
+
+	# Gateway: login, LiveKit tokens, presence and chat.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+	handle /ws {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Web client (same UI as the desktop app).
+	handle {
+		root * "{$WEB_ROOT:/srv/web}"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+}

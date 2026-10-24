@@ -1,0 +1,46 @@
+{
+  "name": "gamespeaker",
+  "productName": "Gamespeaker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private voice, chat and 4K streaming for your crew",
+  "author": "Gamespeaker",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "build:web": "vite build --config vite.web.config.ts",
+    "dev:web": "vite --config vite.web.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist:win": "electron-vite build && electron-builder --win --publish never",
+    "dist:mac": "electron-vite build && electron-builder --mac --publish never",
+    "release": "electron-vite build && electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11",
+    "uiohook-napi": "1.5.5"
+  },
+  "optionalDependencies": {
+    "koffi": "3.3.3",
+    "loopback-capture": "3.0.2"
+  },
+  "devDependencies": {
+    "@fontsource/manrope": "5.3.0",
+    "@fontsource/space-grotesk": "5.3.0",
+    "@sapphi-red/web-noise-suppressor": "0.4.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "electron-vite": "6.0.0",
+    "livekit-client": "2.23.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "zustand": "5.0.16"
+  }
+}
