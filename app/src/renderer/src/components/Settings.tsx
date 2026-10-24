@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useApp, setApp, type SettingsSection } from '../state/store';
-import { logout, updateProfile } from '../lib/actions';
+import { logout } from '../lib/actions';
 import { listDevices } from '../lib/mic';
 import { bridge, defaultServerUrl, isDesktop } from '../lib/platform';
-import { AVATAR_COLORS, useSettings, updateSettings, type NoiseLevel } from '../lib/settings';
+import { useSettings, updateSettings, type NoiseLevel } from '../lib/settings';
 import { sounds } from '../lib/sounds';
 import { NEON_PRESETS, neonName } from '../lib/theme';
 import { setMicTest } from '../lib/voice';
 import { AdminSettings } from './AdminSettings';
+import { ProfileSettings } from './ProfileEditor';
 import { Avatar } from './Avatar';
 import { GLOW_OPTIONS } from './NeonPicker';
 import { CloseIcon } from './Icons';
@@ -27,59 +28,6 @@ function Card({ label, children }: { label?: string; children: ReactNode }) {
       {label && <span className="label">{label}</span>}
       {children}
     </div>
-  );
-}
-
-// ---------------- Profile ----------------
-
-function Profile() {
-  const me = useApp((s) => s.me);
-  const [name, setName] = useState(me?.name ?? '');
-  const color = me?.color ?? AVATAR_COLORS[0]!;
-  const save = () => {
-    const n = name.trim();
-    if (n && n !== me?.name) void updateProfile({ name: n });
-  };
-  return (
-    <>
-      <h1>My profile</h1>
-      <p className="lead">This is how friends see you.</p>
-      <Card>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, alignItems: 'flex-start' }}>
-          <Avatar name={name || '?'} color={color} size={96} />
-          <div style={{ flex: 1, minWidth: 240, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <label className="label" htmlFor="nick" style={{ display: 'block', marginBottom: 8 }}>Nickname</label>
-              <input
-                id="nick"
-                className="field"
-                value={name}
-                maxLength={32}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={save}
-                onKeyDown={(e) => e.key === 'Enter' && save()}
-              />
-            </div>
-            <div>
-              <div className="label" style={{ marginBottom: 8 }}>Avatar color</div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {AVATAR_COLORS.map((c, i) => (
-                  <button
-                    key={c}
-                    className="swatch"
-                    style={{ width: 34, height: 34, background: c, '--sw': c } as CSSProperties}
-                    aria-label={`Avatar color ${i + 1}`}
-                    aria-pressed={c === color}
-                    onClick={() => void updateProfile({ color: c })}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
-      <button className="btn-plain" style={{ color: 'var(--red)' }} onClick={() => void logout()}>Sign out</button>
-    </>
   );
 }
 
@@ -399,6 +347,7 @@ function Streaming() {
 function AppSection() {
   const s = useSettings();
   const update = useApp((st) => st.update);
+  const gamesSupported = useApp((st) => st.gamesSupported);
   const [launch, setLaunch] = useState(false);
   const [server, setServer] = useState(s.serverUrl ?? '');
 
@@ -420,6 +369,33 @@ function AppSection() {
           title="Sound effects"
           desc="Soft chimes when people join or leave your voice channel, go live, or message you."
         />
+        <Toggle
+          on={s.mentionNotifications}
+          onChange={(v) => {
+            updateSettings({ mentionNotifications: v });
+            // The browser asks once; the desktop app is always allowed.
+            if (v && typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission();
+          }}
+          title="Pop-up when someone @mentions you"
+          desc="A desktop notification when you're in another channel or another app. Do Not Disturb turns it off."
+        />
+        {gamesSupported && (
+          <>
+            <Toggle
+              on={s.detectGames}
+              onChange={(v) => updateSettings({ detectGames: v })}
+              title="Detect games"
+              desc="Spots the game you have open, so Go Live becomes one click: Stream VALORANT."
+            />
+            <Toggle
+              on={s.showPlaying}
+              disabled={!s.detectGames}
+              onChange={(v) => updateSettings({ showPlaying: v })}
+              title="Show what I'm playing"
+              desc="Friends see “Playing …” under your name."
+            />
+          </>
+        )}
         {isDesktop && (
           <>
             <Toggle on={launch} onChange={(v) => { setLaunch(v); void bridge?.setLaunchAtLogin(v); }} title="Start with your computer" desc="Opens quietly in the tray so friends can reach you." />
@@ -458,7 +434,7 @@ function AppSection() {
 }
 
 const SECTIONS: { key: SettingsSection; label: string; render: () => ReactNode; admin?: boolean }[] = [
-  { key: 'profile', label: 'My profile', render: () => <Profile /> },
+  { key: 'profile', label: 'My profile', render: () => <ProfileSettings /> },
   { key: 'appearance', label: 'Appearance', render: () => <Appearance /> },
   { key: 'voice', label: 'Voice & audio', render: () => <Voice /> },
   { key: 'keys', label: 'Keybinds', render: () => <Keys /> },

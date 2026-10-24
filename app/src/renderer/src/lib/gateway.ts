@@ -1,6 +1,8 @@
-import type { Channel, Me } from './api';
+import type { Attachment, Channel, Me, Profile } from './api';
 
 export type LiveInfo = { title: string; quality: string };
+export type Status = 'online' | 'idle' | 'dnd';
+export type CustomStatus = { emoji: string; text: string };
 
 export type PresenceUser = {
   id: string;
@@ -10,6 +12,11 @@ export type PresenceUser = {
   muted: boolean;
   deafened: boolean;
   live: LiveInfo | null;
+  playing?: string | null;
+  status?: Status;
+  custom?: CustomStatus | null;
+  /** Whose stream they have on screen. */
+  watching?: string | null;
   since: number;
 };
 
@@ -20,12 +27,14 @@ export type ChatMessage = {
   name: string;
   color: string;
   text: string;
+  attachments?: Attachment[];
   ts: number;
 };
 
 export type GatewayHandlers = {
   onStatus: (status: 'connecting' | 'online' | 'offline') => void;
-  onReady: (data: { you: Me; serverName: string; channels: Channel[]; users: PresenceUser[]; admin: boolean }) => void;
+  onReady: (data: { you: Me; serverName: string; channels: Channel[]; users: PresenceUser[]; profiles: Profile[]; admin: boolean }) => void;
+  onProfile: (profile: Profile) => void;
   onChannels: (channels: Channel[]) => void;
   onServerName: (name: string) => void;
   onPresence: (users: PresenceUser[]) => void;
@@ -101,6 +110,9 @@ export class GatewayClient {
           break;
         case 'server':
           this.h.onServerName(msg.serverName);
+          break;
+        case 'profile':
+          this.h.onProfile(msg.profile);
           break;
         case 'error':
           if (msg.code === 'invalid_session') this.h.onInvalidSession();

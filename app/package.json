@@ -1,7 +1,7 @@
 {
   "name": "gamespeaker",
   "productName": "Gamespeaker",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Private voice, chat and 4K streaming for your crew",
   "author": "Gamespeaker",
@@ -13,6 +13,7 @@
     "build:web": "vite build --config vite.web.config.ts && node -e \"require('fs').writeFileSync('../server/web/.gitkeep', '')\"",
     "dev:web": "vite --config vite.web.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
     "dist:win": "electron-vite build && electron-builder --win --publish never",
     "dist:mac": "electron-vite build && electron-builder --mac --publish never",
     "release": "electron-vite build && electron-builder --publish always"

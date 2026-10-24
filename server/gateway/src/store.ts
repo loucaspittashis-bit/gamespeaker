@@ -1,5 +1,8 @@
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
 
+/** A picture in a chat message: a MediaStore file and its size, so the app can lay it out before it loads. */
+export type Attachment = { file: string; width: number; height: number };
+
 export type ChatMessage = {
   id: number;
   channel: string;
@@ -7,8 +10,12 @@ export type ChatMessage = {
   name: string;
   color: string;
   text: string;
+  attachments: Attachment[];
   ts: number;
 };
+
+type Row = Omit<ChatMessage, 'attachments'> & { attachments: string | null };
+const fromRow = ({ attachments, ...m }: Row): ChatMessage => ({ ...m, attachments: attachments ? JSON.parse(attachments) : [] });
 
 export const MAX_MESSAGES_PER_CHANNEL = 10_000;
 
@@ -19,6 +26,7 @@ export class ChatStore {
   private latestStmt: StatementSync;
   private beforeStmt: StatementSync;
   private pruneStmt: StatementSync;
+  private usesStmt: StatementSync;
   private insertsSincePrune = 0;
 
   constructor(file: string) {
@@ -37,14 +45,18 @@ export class ChatStore {
       );
       CREATE INDEX IF NOT EXISTS messages_channel_id ON messages (channel, id);
     `);
+    // Added in 0.1.2: pictures in chat.
+    const cols = this.db.prepare('PRAGMA table_info(messages)').all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'attachments')) this.db.exec('ALTER TABLE messages ADD COLUMN attachments TEXT');
     this.insertStmt = this.db.prepare(
-      'INSERT INTO messages (channel, user_id, name, color, text, ts) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO messages (channel, user_id, name, color, text, attachments, ts) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
-    const cols = 'id, channel, user_id AS userId, name, color, text, ts';
-    this.latestStmt = this.db.prepare(`SELECT ${cols} FROM messages WHERE channel = ? ORDER BY id DESC LIMIT ?`);
+    const select = 'id, channel, user_id AS userId, name, color, text, attachments, ts';
+    this.latestStmt = this.db.prepare(`SELECT ${select} FROM messages WHERE channel = ? ORDER BY id DESC LIMIT ?`);
     this.beforeStmt = this.db.prepare(
-      `SELECT ${cols} FROM messages WHERE channel = ? AND id < ? ORDER BY id DESC LIMIT ?`,
+      `SELECT ${select} FROM messages WHERE channel = ? AND id < ? ORDER BY id DESC LIMIT ?`,
     );
+    this.usesStmt = this.db.prepare("SELECT COUNT(*) AS n FROM messages WHERE attachments LIKE '%' || ? || '%'");
     this.pruneStmt = this.db.prepare(
       `DELETE FROM messages WHERE channel = ? AND id <= (
          SELECT id FROM messages WHERE channel = ? ORDER BY id DESC LIMIT 1 OFFSET ?
@@ -53,7 +65,8 @@ export class ChatStore {
   }
 
   add(msg: Omit<ChatMessage, 'id'>): ChatMessage {
-    const result = this.insertStmt.run(msg.channel, msg.userId, msg.name, msg.color, msg.text, msg.ts);
+    const attachments = msg.attachments.length ? JSON.stringify(msg.attachments) : null;
+    const result = this.insertStmt.run(msg.channel, msg.userId, msg.name, msg.color, msg.text, attachments, msg.ts);
     if (++this.insertsSincePrune >= 200) {
       this.insertsSincePrune = 0;
       this.pruneStmt.run(msg.channel, msg.channel, MAX_MESSAGES_PER_CHANNEL);
@@ -65,9 +78,14 @@ export class ChatStore {
   history(channel: string, before?: number, limit = 50): { messages: ChatMessage[]; hasMore: boolean } {
     const rows = (before
       ? this.beforeStmt.all(channel, before, limit + 1)
-      : this.latestStmt.all(channel, limit + 1)) as unknown as ChatMessage[];
+      : this.latestStmt.all(channel, limit + 1)) as unknown as Row[];
     const hasMore = rows.length > limit;
-    return { messages: rows.slice(0, limit).reverse(), hasMore };
+    return { messages: rows.slice(0, limit).reverse().map(fromRow), hasMore };
+  }
+
+  /** Whether any message shows this picture (so it isn't deleted with a profile photo). */
+  usesMedia(file: string): boolean {
+    return Number((this.usesStmt.get(file) as { n: number }).n) > 0;
   }
 
   close(): void {

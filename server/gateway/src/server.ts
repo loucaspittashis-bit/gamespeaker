@@ -10,6 +10,9 @@ import { RateLimiter } from './ratelimit.ts';
 import { ChatStore } from './store.ts';
 import { Presence, type LiveInfo, type StatePatch } from './presence.ts';
 import { SettingsFile, type Ban } from './settings.ts';
+import type { Attachment } from './store.ts';
+import { MAX_IMAGE_SIDE, MEDIA_NAME, MediaStore, sniffImage } from './media.ts';
+import { MAX_BIO_CHARS, ProfileStore, type ProfilePatch } from './profiles.ts';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_CHAT_CHARS = 2000;
@@ -19,6 +22,9 @@ const LIVEKIT_TOKEN_TTL_SEC = 2 * 60 * 60;
 const AVATAR_COLORS = ['#b3a6ff', '#ffb27a', '#6ee7c8', '#ff9ec4', '#8cc8ff', '#f5d76e'];
 const DEVICE_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const FRAME_ID = /^[a-z0-9-]{1,24}$/;
+const MAX_UPLOAD_BYTES = { avatar: 5 * 1024 * 1024, banner: 8 * 1024 * 1024, chat: 8 * 1024 * 1024 };
+const MAX_ATTACHMENTS = 4;
 
 // WebSocket close codes the app understands.
 export const CLOSE_SIGNED_OUT = 4003; // session no longer valid (password changed)
@@ -39,6 +45,7 @@ export type Gateway = {
   server: Server;
   presence: Presence;
   store: ChatStore;
+  profiles: ProfileStore;
   close(): Promise<void>;
 };
 
@@ -114,6 +121,39 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   throw new HttpError(400, 'invalid_json');
 }
 
+async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
+  if (Number(req.headers['content-length'] ?? 0) > limit) throw new HttpError(413, 'too_large', 'That picture is too big.');
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > limit) throw new HttpError(413, 'too_large', 'That picture is too big.');
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
+/** A #rrggbb color, null to clear it, or undefined when the field is missing or invalid. */
+function parseColor(raw: unknown): string | null | undefined {
+  if (raw === null) return null;
+  return typeof raw === 'string' && HEX_COLOR.test(raw) ? raw.toLowerCase() : undefined;
+}
+
+/** Strips control characters and extra spaces; null if nothing is left. */
+function cleanText(raw: unknown, max: number): string | null {
+  if (typeof raw !== 'string') return null;
+  return raw.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) || null;
+}
+
+function parseCustom(raw: unknown): { emoji: string; text: string } | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || typeof raw !== 'object') return null;
+  const { emoji, text } = raw as Record<string, unknown>;
+  const e = cleanText(emoji, 16) ?? '';
+  const t = cleanText(text, 60) ?? '';
+  return e || t ? { emoji: e, text: t } : null;
+}
+
 function parseLive(raw: unknown): LiveInfo | null | undefined {
   if (raw === undefined) return undefined;
   if (raw === null) return null;
@@ -130,6 +170,8 @@ function safeEqual(a: string, b: string): boolean {
 export function createGateway(config: Config): Gateway {
   mkdirSync(config.dataDir, { recursive: true });
   const store = new ChatStore(join(config.dataDir, 'chat.db'));
+  const profiles = new ProfileStore(join(config.dataDir, 'profiles.db'));
+  const media = new MediaStore(join(config.dataDir, 'media'));
   const saved = new SettingsFile(join(config.dataDir, 'settings.json'));
   const presence = new Presence();
   const roomService = new RoomServiceClient(config.livekitHost, config.livekitApiKey, config.livekitApiSecret);
@@ -137,6 +179,8 @@ export function createGateway(config: Config): Gateway {
   const adminLimiter = new RateLimiter(5, 10 * 60_000);
   const tokenLimiter = new RateLimiter(60, 60_000);
   const chatLimiter = new RateLimiter(8, 10_000);
+  const uploadLimiter = new RateLimiter(20, 10 * 60_000);
+  const chatUploadLimiter = new RateLimiter(40, 10 * 60_000);
   const conns = new Set<Conn>();
 
   // Live server settings: what the admin screen saved, else .env.
@@ -208,6 +252,17 @@ export function createGateway(config: Config): Gateway {
     if (room) await roomService.removeParticipant(room, userId).catch(() => {});
   };
 
+  /** Saves a profile change, deletes pictures nobody uses any more, and tells everyone. */
+  const saveProfile = (userId: string, patch: ProfilePatch) => {
+    const before = profiles.get(userId);
+    const after = profiles.update(userId, patch);
+    for (const old of [before.avatar, before.banner]) {
+      if (old && old !== after.avatar && old !== after.banner && !profiles.inUse(old) && !store.usesMedia(old)) media.remove(old);
+    }
+    broadcast({ t: 'profile', profile: after });
+    return after;
+  };
+
   const adminState = () => ({
     serverName,
     channels,
@@ -272,6 +327,66 @@ export function createGateway(config: Config): Gateway {
       if (presence.update(session.sub, { name, color })) broadcastPresence();
       for (const c of conns) if (c.session?.sub === session.sub) c.session = { ...c.session, name, color };
       sendJson(res, 200, issue({ sub: session.sub, name, color }));
+      return;
+    }
+
+    if (req.method === 'GET' && path.startsWith('/api/media/')) {
+      if (!media.serve(path.slice('/api/media/'.length), res)) throw new HttpError(404, 'not_found');
+      return;
+    }
+
+    if (req.method === 'POST' && (path === '/api/me/avatar' || path === '/api/me/banner')) {
+      const session = requireSession(req);
+      if (!uploadLimiter.hit(session.sub)) throw new HttpError(429, 'too_many_requests', 'Too many uploads. Try again in a few minutes.');
+      const kind = path === '/api/me/avatar' ? 'avatar' : 'banner';
+      const body = await readBody(req, MAX_UPLOAD_BYTES[kind]);
+      const image = sniffImage(body);
+      if (!image) throw new HttpError(415, 'unsupported_image', 'Use a PNG, JPG, WebP or GIF picture.');
+      if (image.width < 1 || image.height < 1 || image.width > MAX_IMAGE_SIDE || image.height > MAX_IMAGE_SIDE) {
+        throw new HttpError(400, 'image_too_big', `Pictures can be up to ${MAX_IMAGE_SIDE} pixels wide and tall.`);
+      }
+      const file = media.save(body, image.ext);
+      log(`${kind} uploaded name=${JSON.stringify(session.name)} ${image.ext} ${image.width}x${image.height} ${body.length}B`);
+      sendJson(res, 200, saveProfile(session.sub, { [kind]: file }));
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/chat/upload') {
+      const session = requireSession(req);
+      if (!chatUploadLimiter.hit(session.sub)) throw new HttpError(429, 'too_many_requests', 'Too many pictures. Try again in a few minutes.');
+      const body = await readBody(req, MAX_UPLOAD_BYTES.chat);
+      const image = sniffImage(body);
+      if (!image) throw new HttpError(415, 'unsupported_image', 'Use a PNG, JPG, WebP or GIF picture.');
+      if (image.width < 1 || image.height < 1 || image.width > MAX_IMAGE_SIDE || image.height > MAX_IMAGE_SIDE) {
+        throw new HttpError(400, 'image_too_big', `Pictures can be up to ${MAX_IMAGE_SIDE} pixels wide and tall.`);
+      }
+      sendJson(res, 200, { file: media.save(body, image.ext), width: image.width, height: image.height });
+      return;
+    }
+
+    if (req.method === 'POST' && path === '/api/me/profile') {
+      const session = requireSession(req);
+      const body = await readJson(req);
+      const patch: ProfilePatch = {};
+      // Pictures can only be removed here; they are set by uploading.
+      if (body.avatar === null) patch.avatar = null;
+      if (body.banner === null) patch.banner = null;
+      if (body.frame !== undefined) {
+        if (body.frame !== null && !(typeof body.frame === 'string' && FRAME_ID.test(body.frame))) throw new HttpError(400, 'invalid_frame');
+        patch.frame = body.frame;
+      }
+      for (const key of ['frameColor', 'bannerColor'] as const) {
+        if (body[key] === undefined) continue;
+        const color = parseColor(body[key]);
+        if (color === undefined) throw new HttpError(400, 'invalid_color');
+        patch[key] = color;
+      }
+      if (body.bio !== undefined) {
+        const bio = typeof body.bio === 'string' ? body.bio.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '').replace(/\n{3,}/g, '\n\n').trim() : null;
+        if (bio === null || bio.length > MAX_BIO_CHARS) throw new HttpError(400, 'invalid_bio', `Keep it under ${MAX_BIO_CHARS} characters.`);
+        patch.bio = bio;
+      }
+      sendJson(res, 200, saveProfile(session.sub, patch));
       return;
     }
 
@@ -480,6 +595,7 @@ export function createGateway(config: Config): Gateway {
           serverName,
           channels,
           users: presence.list(),
+          profiles: profiles.all(),
           admin: Boolean(adminEp),
         });
         broadcastPresence();
@@ -498,6 +614,23 @@ export function createGateway(config: Config): Gateway {
     ws.on('error', () => ws.terminate());
   }
 
+  /** Pictures for a chat message: stored files only, at most four. Null if anything is off. */
+  function parseAttachments(raw: unknown): Attachment[] | null {
+    if (raw === undefined) return [];
+    if (!Array.isArray(raw) || raw.length > MAX_ATTACHMENTS) return null;
+    const out: Attachment[] = [];
+    for (const a of raw) {
+      if (!a || typeof a !== 'object') return null;
+      const { file, width, height } = a as Record<string, unknown>;
+      if (typeof file !== 'string' || !MEDIA_NAME.test(file) || !media.has(file)) return null;
+      const w = Number(width);
+      const h = Number(height);
+      if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w > MAX_IMAGE_SIDE || h > MAX_IMAGE_SIDE) return null;
+      out.push({ file, width: w, height: h });
+    }
+    return out;
+  }
+
   function handleMessage(conn: Conn, session: Session, msg: Record<string, unknown>): void {
     switch (msg.t) {
       case 'state': {
@@ -509,6 +642,14 @@ export function createGateway(config: Config): Gateway {
         if (typeof msg.deafened === 'boolean') patch.deafened = msg.deafened;
         const live = parseLive(msg.live);
         if (live !== undefined) patch.live = live;
+        if (msg.status === 'online' || msg.status === 'idle' || msg.status === 'dnd') patch.status = msg.status;
+        const custom = parseCustom(msg.custom);
+        if (custom !== undefined) patch.custom = custom;
+        if (msg.watching === null || (typeof msg.watching === 'string' && DEVICE_ID.test(msg.watching))) patch.watching = msg.watching;
+        if (msg.playing === null) patch.playing = null;
+        else if (typeof msg.playing === 'string') {
+          patch.playing = cleanText(msg.playing, 60);
+        }
         if (presence.update(session.sub, patch)) broadcastPresence();
         return;
       }
@@ -518,10 +659,12 @@ export function createGateway(config: Config): Gateway {
         const text = typeof msg.text === 'string' ? msg.text.trim() : '';
         const nonce = typeof msg.nonce === 'string' ? msg.nonce.slice(0, 64) : undefined;
         if (!chatIds.has(channel)) return send(conn, { t: 'error', code: 'unknown_channel', nonce });
-        if (!text || text.length > MAX_CHAT_CHARS) return send(conn, { t: 'error', code: 'invalid_text', nonce });
+        const attachments = parseAttachments(msg.attachments);
+        if (!attachments) return send(conn, { t: 'error', code: 'invalid_attachments', nonce });
+        if ((!text && !attachments.length) || text.length > MAX_CHAT_CHARS) return send(conn, { t: 'error', code: 'invalid_text', nonce });
         if (!chatLimiter.hit(session.sub)) return send(conn, { t: 'error', code: 'slow_down', nonce });
         const saved = store.add({
-          channel, userId: session.sub, name: session.name, color: session.color, text, ts: Date.now(),
+          channel, userId: session.sub, name: session.name, color: session.color, text, attachments, ts: Date.now(),
         });
         broadcast({ t: 'chat', msg: saved, nonce });
         return;
@@ -569,6 +712,7 @@ export function createGateway(config: Config): Gateway {
     server,
     presence,
     store,
+    profiles,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(heartbeat);
@@ -578,6 +722,7 @@ export function createGateway(config: Config): Gateway {
         server.closeAllConnections();
         server.close(() => {
           store.close();
+          profiles.close();
           resolve();
         });
       }),

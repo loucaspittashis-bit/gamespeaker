@@ -112,6 +112,16 @@ export const LockIcon = make(
   </>,
 );
 export const ArrowRightIcon = make(<path d="M5 12h14M13 6l6 6-6 6" />);
+export const ImageIcon = make(
+  <>
+    <rect x="3" y="3" width="18" height="18" rx="3" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
+  </>,
+);
+export const GamepadIcon = make(
+  <path d="M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 0 0-4 3.6l-.9 7.2A2.5 2.5 0 0 0 6.4 17.4L8 15h8l1.6 2.4a2.5 2.5 0 0 0 4.5-1.6l-.9-7.2A4 4 0 0 0 17.3 5Z" />,
+);
 export const ChevronUpIcon = make(<path d="m18 15-6-6-6 6" />);
 export const ChevronDownIcon = make(<path d="m6 9 6 6 6-6" />);
 export const PlusIcon = make(<path d="M12 5v14M5 12h14" />);

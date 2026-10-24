@@ -3,11 +3,14 @@ import { useApp, setApp } from '../state/store';
 import { useSettings, updateSettings } from '../lib/settings';
 import { serverUrl } from '../lib/api';
 import { openTextChannel } from '../lib/actions';
-import { joinVoice, leaveVoice, setDeafened, setFocus, setMuted, stopStream } from '../lib/voice';
+import { joinVoice, leaveVoice, setDeafened, setFocus, setMuted } from '../lib/voice';
 import { Avatar } from './Avatar';
+import { openProfile } from './ProfileCard';
+import { GoLiveButton } from './GoLiveButton';
+import { STATUS_LABEL } from './StatusEditor';
 import {
   GearIcon, HashIcon, HeadphonesIcon, HeadphonesOffIcon, LogoIcon, MicIcon, MicOffIcon,
-  PhoneOffIcon, ScreenIcon, SpeakerIcon, SpeakerOffIcon, WaveIcon,
+  PhoneOffIcon, SpeakerIcon, SpeakerOffIcon, WaveIcon,
 } from './Icons';
 
 export function openUserMenu(e: MouseEvent, userId: string) {
@@ -43,6 +46,7 @@ function VoiceChannels() {
   const members = useApp((s) => s.members);
   const status = useApp((s) => s.voiceStatus);
   const userMuted = useSettings((s) => s.userMuted);
+  const mentionCounts = useApp((s) => s.mentionCounts);
 
   return (
     <>
@@ -58,10 +62,11 @@ function VoiceChannels() {
             <button className="vc-head hv" onClick={() => void joinVoice(c.id)} aria-label={joined ? `${c.name}, connected` : `Join ${c.name}`}>
               <span className="ic"><SpeakerIcon size="s" /></span>
               <span className="n">{c.name}</span>
+              {(mentionCounts[c.id] ?? 0) > 0 && <span className="ping-count">{mentionCounts[c.id]}</span>}
               {!joined && liveCount > 0 && <span className="lv">{liveCount} LIVE</span>}
               {!joined && present.length > 0 && (
                 <span className="stack">
-                  {present.slice(0, 4).map((u) => <Avatar key={u.id} name={u.name} color={u.color} size={20} />)}
+                  {present.slice(0, 4).map((u) => <Avatar key={u.id} id={u.id} name={u.name} color={u.color} size={20} />)}
                 </span>
               )}
             </button>
@@ -74,16 +79,27 @@ function VoiceChannels() {
                     <button
                       key={m.id}
                       className={`member hv${m.speaking ? ' speaking' : ''}`}
-                      onClick={() => m.streaming && setFocus(m.id)}
+                      onClick={(e) => openProfile(e, m.id)}
                       onContextMenu={(e) => openUserMenu(e, m.id)}
                     >
-                      <Avatar name={m.name} color={m.color} size={26} speaking={m.speaking} />
+                      <Avatar id={m.id} name={m.name} color={m.color} size={26} speaking={m.speaking} />
                       <span className="n">{m.name}{m.isLocal ? ' (you)' : ''}</span>
                       {m.speaking && <span className="eq" aria-hidden="true"><span /><span /><span /></span>}
                       {userMuted[m.id] && <span className="flag"><SpeakerOffIcon size="xs" label="Muted by you" /></span>}
                       {m.micMuted && !deaf && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
                       {deaf && <span className="flag"><HeadphonesOffIcon size="xs" label="Deafened" /></span>}
-                      {m.streaming && <span className="live-pill">LIVE</span>}
+                      {m.streaming && (
+                        <span
+                          className="live-pill"
+                          title="Watch stream"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFocus(m.id);
+                          }}
+                        >
+                          LIVE
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -103,6 +119,7 @@ function TextChannels() {
   const messages = useApp((s) => s.messages);
   const me = useApp((s) => s.me);
   const lastRead = useSettings((s) => s.lastRead);
+  const mentionCounts = useApp((s) => s.mentionCounts);
 
   return (
     <>
@@ -111,11 +128,16 @@ function TextChannels() {
         const active = view === 'text' && textChannel === c.id;
         const last = messages[c.id]?.at(-1);
         const unread = !active && last !== undefined && last.userId !== me?.id && last.id > (lastRead[c.id] ?? 0);
+        const pings = mentionCounts[c.id] ?? 0;
         return (
           <button key={c.id} className={`tc hv${active ? ' active' : ''}${unread ? ' unread' : ''}`} onClick={() => openTextChannel(c.id)}>
             <span className="ic"><HashIcon size="s" /></span>
             <span className="n">{c.name}</span>
-            {unread && <span className="unread-dot" aria-label="Unread messages" />}
+            {pings > 0 ? (
+              <span className="ping-count" aria-label={`${pings} mention${pings === 1 ? '' : 's'}`}>{pings}</span>
+            ) : (
+              unread && <span className="unread-dot" aria-label="Unread messages" />
+            )}
           </button>
         );
       })}
@@ -165,7 +187,6 @@ function StatusCard() {
   const channels = useApp((s) => s.channels);
   const pings = useApp((s) => s.pings);
   const popover = useApp((s) => s.popover);
-  const myLive = useApp((s) => s.myLive);
   const noise = useSettings((s) => s.noise);
   if (!voiceChannel) return null;
   const name = channels.find((c) => c.id === voiceChannel)?.name ?? voiceChannel;
@@ -193,14 +214,7 @@ function StatusCard() {
           <PhoneOffIcon />
         </button>
       </div>
-      <button
-        className={`live-btn${myLive ? ' on' : ''}`}
-        disabled={status !== 'connected'}
-        onClick={() => (myLive ? void stopStream() : setApp({ modal: 'golive', popover: null }))}
-      >
-        <ScreenIcon size="s" />
-        {myLive ? 'End stream' : 'Go Live'}
-      </button>
+      <GoLiveButton variant="side" />
     </div>
   );
 }
@@ -211,15 +225,24 @@ function UserCard() {
   const deafened = useApp((s) => s.deafened);
   const voiceChannel = useApp((s) => s.voiceChannel);
   const speaking = useApp((s) => s.members.some((m) => m.isLocal && m.speaking));
+  const chosen = useSettings((s) => s.status);
+  const idle = useApp((s) => s.idle);
+  const customSetting = useSettings((s) => s.customStatus);
   if (!me) return null;
+  const status = chosen === 'online' && idle ? 'idle' : chosen;
+  const custom = customSetting && (customSetting.until === null || customSetting.until > Date.now()) ? customSetting : null;
   const off = muted || deafened;
   return (
     <div className="user-card">
-      <Avatar name={me.name} color={me.color} size={36} speaking={speaking} status />
-      <span className="who">
-        <b>{me.name}</b>
-        <small>{deafened ? 'Deafened' : muted ? 'Muted' : voiceChannel ? 'In voice' : 'Online'}</small>
-      </span>
+      <button className="me hv" aria-label="Your profile" onClick={(e) => openProfile(e, me.id)}>
+        <Avatar id={me.id} name={me.name} color={me.color} size={36} speaking={speaking} status={status} />
+        <span className="who">
+          <b>{me.name}</b>
+          <small>
+            {deafened ? 'Deafened' : muted ? 'Muted' : custom ? `${custom.emoji} ${custom.text}`.trim() : voiceChannel ? 'In voice' : STATUS_LABEL[status]}
+          </small>
+        </span>
+      </button>
       <button className={`ib${off ? ' bad' : ''}`} title={off ? 'Unmute' : 'Mute'} aria-label={off ? 'Unmute' : 'Mute'} onClick={() => setMuted(!off)}>
         {off ? <MicOffIcon /> : <MicIcon />}
       </button>

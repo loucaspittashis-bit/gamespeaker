@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { LocalVideoTrack, RemoteVideoTrack } from 'livekit-client';
-import type { UpdateStatus } from '../../../shared/bridge';
-import type { Channel, Me } from '../lib/api';
+import type { DetectedGame, UpdateStatus } from '../../../shared/bridge';
+import type { Attachment, Channel, Me, Profile } from '../lib/api';
 import type { ChatMessage, LiveInfo, PresenceUser } from '../lib/gateway';
 import type { MicLevel } from '../lib/mic';
 
@@ -25,7 +25,7 @@ export type StreamInfo = {
   quality: string;
 };
 
-export type PendingMessage = { nonce: string; channel: string; text: string; ts: number; failed?: boolean };
+export type PendingMessage = { nonce: string; channel: string; text: string; attachments: Attachment[]; ts: number; failed?: boolean };
 
 export type Toast = { id: number; text: string; tone: 'neon' | 'warn' };
 
@@ -40,6 +40,19 @@ export type AppState = {
   users: PresenceUser[];
   /** The server has an admin password set, so Settings shows Server admin. */
   adminAvailable: boolean;
+  /** Photos, frames and bios by user id, including people who are offline. */
+  profiles: Record<string, Profile>;
+  /** The game open on this PC (Windows desktop app), for one-click streaming. */
+  game: DetectedGame | null;
+  gamesSupported: boolean;
+  /** No keyboard or mouse for a while (auto-idle). */
+  idle: boolean;
+  /** Unread @mentions of you, by channel. */
+  mentionCounts: Record<string, number>;
+  /** A chat picture shown full size. */
+  lightbox: string | null;
+  /** An open profile card, placed beside the element that was clicked. */
+  profileCard: { userId: string; left: number; right: number; top: number; name?: string; color?: string } | null;
 
   messages: Record<string, ChatMessage[]>;
   pending: PendingMessage[];
@@ -79,6 +92,13 @@ export const useApp = create<AppState>()(() => ({
   channels: [],
   users: [],
   adminAvailable: false,
+  profiles: {},
+  profileCard: null,
+  game: null,
+  gamesSupported: false,
+  idle: false,
+  mentionCounts: {},
+  lightbox: null,
 
   messages: {},
   pending: [],

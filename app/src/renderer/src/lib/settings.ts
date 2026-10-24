@@ -57,6 +57,15 @@ export type Settings = {
 
   /** Join/leave/live chimes and the message blip. */
   soundEffects: boolean;
+  /** Windows: spot the open game for one-click streaming. */
+  detectGames: boolean;
+  /** Let friends see "Playing …" under your name. */
+  showPlaying: boolean;
+  /** Your chosen status. "online" goes idle by itself when you're away. */
+  status: 'online' | 'idle' | 'dnd';
+  customStatus: { emoji: string; text: string; until: number | null } | null;
+  /** Desktop notification when someone @mentions you. */
+  mentionNotifications: boolean;
   /** Admin screen unlock, valid until adminExpiresAt (ms). */
   adminToken: string | null;
   adminExpiresAt: number;
@@ -96,6 +105,11 @@ const defaults: Settings = {
   lastRead: {},
   closeToTray: true,
   soundEffects: true,
+  detectGames: true,
+  showPlaying: true,
+  status: 'online',
+  customStatus: null,
+  mentionNotifications: true,
   adminToken: null,
   adminExpiresAt: 0,
 };

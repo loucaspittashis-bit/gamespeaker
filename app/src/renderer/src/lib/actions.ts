@@ -1,6 +1,9 @@
-import { app, setApp, toast, type PendingMessage } from '../state/store';
-import { ApiError, adminApi, api, gatewaySocketUrl, type Channel } from './api';
+import { app, setApp, toast, useApp, type PendingMessage } from '../state/store';
+import { ApiError, adminApi, api, gatewaySocketUrl, type Attachment, type Channel, type Profile, type ProfilePatch } from './api';
 import { GatewayClient, type ChatMessage } from './gateway';
+import { initGames, playingNow } from './games';
+import { mentionsMe } from './mentions';
+import { currentCustom, currentStatus, initStatus, isDnd } from './status';
 import { bridge } from './platform';
 import { settings, updateSettings } from './settings';
 import { sounds } from './sounds';
@@ -25,7 +28,7 @@ export async function logout(): Promise<void> {
   gateway?.close();
   gateway = null;
   updateSettings({ session: null, adminToken: null, adminExpiresAt: 0 });
-  setApp({ phase: 'welcome', me: null, users: [], messages: {}, historyLoaded: {}, modal: null, adminAvailable: false });
+  setApp({ phase: 'welcome', me: null, users: [], messages: {}, historyLoaded: {}, modal: null, adminAvailable: false, profiles: {}, profileCard: null });
 }
 
 export async function updateProfile(patch: { name?: string; color?: string }): Promise<void> {
@@ -43,16 +46,55 @@ export async function updateProfile(patch: { name?: string; color?: string }): P
   }
 }
 
-/** Tells everyone which voice channel we're in, and whether we're muted or live. */
-export function syncPresence(): void {
+const applyProfile = (profile: Profile) => setApp((s) => ({ profiles: { ...s.profiles, [profile.id]: profile } }));
+
+/** Saves frame, colors or bio, or removes the photo or banner. Everyone sees it straight away. */
+export async function editProfile(patch: ProfilePatch): Promise<boolean> {
+  try {
+    applyProfile(await api.updateProfile(patch));
+    return true;
+  } catch (err) {
+    toast(err instanceof ApiError ? err.message : 'Could not save your profile', 'warn');
+    return false;
+  }
+}
+
+export async function uploadProfileImage(kind: 'avatar' | 'banner', image: Blob): Promise<boolean> {
+  try {
+    applyProfile(await api.uploadImage(kind, image));
+    return true;
+  } catch (err) {
+    toast(err instanceof ApiError ? err.message : 'Could not upload that picture', 'warn');
+    return false;
+  }
+}
+
+/** The stream we have on screen: a friend's stream focused in the voice view. */
+function watchingNow(): string | null {
   const s = app();
-  gateway?.send({
+  if (!s.voiceChannel || s.view !== 'voice' || !s.focus) return null;
+  return s.streams.some((x) => x.id === s.focus && !x.isLocal) ? s.focus : null;
+}
+
+let lastPresence = '';
+let watchingSubscribed = false;
+
+/** Tells everyone our voice channel, mute and live state, status, game and what we're watching. Only sends changes. */
+export function syncPresence(force = false): void {
+  const s = app();
+  const state = {
     t: 'state',
     channel: s.voiceChannel,
     muted: s.muted,
     deafened: s.deafened,
     live: s.myLive,
-  });
+    playing: playingNow(),
+    status: currentStatus(),
+    custom: currentCustom(),
+    watching: watchingNow(),
+  };
+  const json = JSON.stringify(state);
+  if ((force || json !== lastPresence) && gateway?.send(state)) lastPresence = json;
   bridge?.setTrayState({ muted: s.muted, deafened: s.deafened, inVoice: Boolean(s.voiceChannel) });
 }
 
@@ -60,7 +102,16 @@ export function startSession(): void {
   const session = settings().session;
   if (!session) return;
   initVoice();
-  onVoiceStateChange(syncPresence);
+  onVoiceStateChange(() => syncPresence());
+  initGames(() => syncPresence());
+  initStatus(() => syncPresence());
+  if (!watchingSubscribed) {
+    watchingSubscribed = true;
+    // What we're watching changes with focus and view, not with voice events.
+    useApp.subscribe((s, prev) => {
+      if (s.focus !== prev.focus || s.view !== prev.view || s.streams !== prev.streams) syncPresence();
+    });
+  }
   setApp({ phase: 'ready' });
   connectGateway(session);
 }
@@ -69,7 +120,7 @@ function connectGateway(session: string): void {
   gateway = new GatewayClient(gatewaySocketUrl(), session, {
     onStatus: (gatewayStatus) => setApp({ gatewayStatus }),
 
-    onReady: ({ you, serverName, channels, users, admin }) => {
+    onReady: ({ you, serverName, channels, users, profiles, admin }) => {
       const firstText = channels.find((c) => c.kind === 'text')?.id ?? '';
       setApp((s) => ({
         me: you,
@@ -77,18 +128,21 @@ function connectGateway(session: string): void {
         channels,
         users,
         adminAvailable: Boolean(admin),
+        profiles: Object.fromEntries((profiles ?? []).map((p) => [p.id, p])),
         textChannel: channels.some((c) => c.id === s.textChannel) ? s.textChannel : firstText,
       }));
       // Load recent history everywhere so unread dots are right from the start.
       for (const c of channels) gateway?.send({ t: 'history', channel: c.id, limit: 50 });
       // Resend anything typed while offline, and our voice state.
-      for (const p of app().pending) gateway?.send({ t: 'chat', channel: p.channel, text: p.text, nonce: p.nonce });
-      syncPresence();
+      for (const p of app().pending) gateway?.send({ t: 'chat', channel: p.channel, text: p.text, attachments: p.attachments, nonce: p.nonce });
+      syncPresence(true);
     },
 
     onChannels: (channels) => applyChannels(channels),
 
     onServerName: (serverName) => setApp({ serverName }),
+
+    onProfile: applyProfile,
 
     onPresence: (users) => {
       setApp({ users });
@@ -101,7 +155,18 @@ function connectGateway(session: string): void {
         pending: nonce ? s.pending.filter((p) => p.nonce !== nonce) : s.pending,
         typing: removeTyping(s.typing, msg.channel, msg.userId),
       }));
-      if (msg.userId !== app().me?.id && !isChannelVisible(msg.channel)) sounds.message();
+      const me = app().me;
+      if (!me || msg.userId === me.id) return;
+      const visible = isChannelVisible(msg.channel);
+      if (mentionsMe(msg.text, me.name)) {
+        if (!visible) setApp((s) => ({ mentionCounts: { ...s.mentionCounts, [msg.channel]: (s.mentionCounts[msg.channel] ?? 0) + 1 } }));
+        if (!isDnd() && (!visible || !document.hasFocus())) {
+          sounds.mention();
+          notifyMention(msg);
+        }
+      } else if (!visible && !isDnd()) {
+        sounds.message();
+      }
     },
 
     onHistory: ({ channel, before, messages, hasMore }) => {
@@ -124,6 +189,7 @@ function connectGateway(session: string): void {
 
     onError: (code, nonce) => {
       if (nonce) setApp((s) => ({ pending: s.pending.map((p) => (p.nonce === nonce ? { ...p, failed: true } : p)) }));
+      if (code === 'invalid_attachments') toast("Those pictures couldn't be sent. Try attaching them again.", 'warn');
       if (code === 'slow_down') toast('Slow down a little', 'warn');
       if (code === 'invalid_text') toast('That message is too long (2000 characters max)', 'warn');
     },
@@ -183,6 +249,23 @@ export async function changeServerPassword(password: string): Promise<void> {
   connectGateway(session);
 }
 
+/** A desktop notification for an @mention; clicking it opens that chat. */
+function notifyMention(msg: ChatMessage): void {
+  bridge?.requestAttention();
+  if (!settings().mentionNotifications || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const channel = app().channels.find((c) => c.id === msg.channel);
+  const where = channel ? (channel.kind === 'text' ? `#${channel.name}` : `${channel.name} chat`) : 'chat';
+  const body = msg.text || (msg.attachments?.length ? 'Sent a picture' : '');
+  const n = new Notification(`${msg.name} mentioned you in ${where}`, { body: body.slice(0, 200), tag: `mention-${msg.channel}`, silent: true });
+  n.onclick = () => {
+    bridge?.showWindow();
+    window.focus();
+    if (channel?.kind === 'text') openTextChannel(channel.id);
+    else if (channel) setApp({ view: 'voice', chatOpen: true });
+    n.close();
+  };
+}
+
 function mergeById(a: ChatMessage[], b: ChatMessage[]): ChatMessage[] {
   const map = new Map<number, ChatMessage>();
   for (const m of [...a, ...b]) map.set(m.id, m);
@@ -202,19 +285,19 @@ export function isChannelVisible(channel: string): boolean {
   return s.voiceChannel === channel && s.chatOpen;
 }
 
-export function sendChat(channel: string, text: string): void {
+export function sendChat(channel: string, text: string, attachments: Attachment[] = []): void {
   const trimmed = text.trim();
-  if (!trimmed) return;
-  const pending: PendingMessage = { nonce: crypto.randomUUID(), channel, text: trimmed, ts: Date.now() };
+  if (!trimmed && !attachments.length) return;
+  const pending: PendingMessage = { nonce: crypto.randomUUID(), channel, text: trimmed, attachments, ts: Date.now() };
   setApp((s) => ({ pending: [...s.pending, pending] }));
-  gateway?.send({ t: 'chat', channel, text: trimmed, nonce: pending.nonce });
+  gateway?.send({ t: 'chat', channel, text: trimmed, attachments, nonce: pending.nonce });
 }
 
 export function retryPending(nonce: string): void {
   const p = app().pending.find((x) => x.nonce === nonce);
   if (!p) return;
   setApp((s) => ({ pending: s.pending.map((x) => (x.nonce === nonce ? { ...x, failed: false } : x)) }));
-  gateway?.send({ t: 'chat', channel: p.channel, text: p.text, nonce: p.nonce });
+  gateway?.send({ t: 'chat', channel: p.channel, text: p.text, attachments: p.attachments, nonce: p.nonce });
 }
 
 export function loadOlder(channel: string): void {
@@ -230,6 +313,7 @@ export function sendTyping(channel: string): void {
 }
 
 export function markRead(channel: string): void {
+  if (app().mentionCounts[channel]) setApp((s) => ({ mentionCounts: { ...s.mentionCounts, [channel]: 0 } }));
   const last = app().messages[channel]?.at(-1)?.id;
   if (last && (settings().lastRead[channel] ?? 0) < last) {
     updateSettings({ lastRead: { ...settings().lastRead, [channel]: last } });

@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, net, protocol, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, net, powerMonitor, protocol, session, shell } from 'electron';
 import { join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { registerCapture } from './capture';
+import { registerGames } from './games';
 import { registerPtt } from './ptt';
 import { createTray } from './tray';
 import { initUpdater } from './updater';
@@ -117,6 +118,7 @@ app.whenReady().then(() => {
   const getWindow = () => win;
 
   registerCapture(getWindow);
+  registerGames(getWindow);
   registerPtt(getWindow);
   const tray = createTray({ show: showWindow, quit: () => { quitting = true; app.quit(); }, getWindow });
   initUpdater(getWindow, () => { quitting = true; });
@@ -135,6 +137,12 @@ app.whenReady().then(() => {
     if (!isMac && win && /^#[0-9a-f]{6}$/i.test(color)) win.setTitleBarOverlay({ color, symbolColor: '#a7adb8', height: 36 });
   });
   ipcMain.on('tray:state', (_e, state) => tray.setState(state));
+  ipcMain.handle('app:idle-seconds', () => powerMonitor.getSystemIdleTime());
+  ipcMain.on('app:show', () => showWindow());
+  ipcMain.on('app:attention', () => {
+    if (win && !win.isDestroyed() && !win.isFocused()) win.flashFrame(true);
+  });
+  win.on('focus', () => win?.flashFrame(false));
 
   // Started at login: stay in the tray instead of popping up.
   if (process.argv.includes('--hidden')) win.once('ready-to-show', () => win?.hide());

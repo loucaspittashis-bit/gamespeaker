@@ -28,8 +28,12 @@ in a game and per-app stream sound.
 | Mute / deafen | The mic and headphone buttons bottom-left, or Ctrl+Shift+M / Ctrl+Shift+D |
 | Push to talk | Settings → Voice & audio → Push to talk. The default key is Mouse 4. It works in-game. |
 | Turn someone up or down | Right-click them → Volume (0–200%), or Mute for me |
-| Go live | **Go Live**, pick a game or screen, then pick the quality |
-| Watch a stream | Click their tile. Hover for stats, pop it out, or go fullscreen. |
+| Go live | **Go Live**, pick a game or screen, then pick the quality. On Windows, with a game open the button becomes **Stream <game>**: one click. |
+| Watch a stream | Click their tile. Hover for stats, pop it out, or go fullscreen (double-click toggles it). Hover the eye to see who's watching. |
+| Set your photo, frame and bio | Settings → My profile. GIFs stay animated. Click anyone's name or avatar to see their card. |
+| Set a status | Click yourself bottom-left: Online, Idle, Do Not Disturb, or a custom status like "💀 ranked grind" |
+| Send pictures | Paste, drag in, or use the picture button next to the message box |
+| Ping someone | Type @ and their name (or @everyone). They get a sound and a desktop pop-up. |
 | Mute someone's game sound but keep their voice | Right-click them → Mute stream sound |
 | Change your neon color | The palette icon at the top of a voice channel, or Settings → Appearance |
 | Clean up a noisy mic | Settings → Voice & audio → Noise suppression: Standard or High |

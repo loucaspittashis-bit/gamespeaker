@@ -1,14 +1,16 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useApp, setApp, type StreamInfo, type VoiceMember } from '../state/store';
 import { useSettings, updateSettings } from '../lib/settings';
-import { leaveVoice, setDeafened, setFocus, setMuted, stopStream } from '../lib/voice';
+import { leaveVoice, setDeafened, setFocus, setMuted } from '../lib/voice';
 import { Avatar } from './Avatar';
+import { openProfile } from './ProfileCard';
+import { GoLiveButton } from './GoLiveButton';
 import { NeonPicker } from './NeonPicker';
 import { openUserMenu } from './Sidebar';
 import { TrackVideo, popOut, useStreamStats } from './TrackVideo';
 import {
   ChatIcon, EyeIcon, HeadphonesIcon, HeadphonesOffIcon, MaximizeIcon, MicIcon, MicOffIcon, MinimizeIcon,
-  PaletteIcon, PhoneOffIcon, PopoutIcon, ScreenIcon, SignalIcon, SpeakerIcon, SpeakerOffIcon,
+  PaletteIcon, PhoneOffIcon, PopoutIcon, SignalIcon, SpeakerIcon, SpeakerOffIcon,
 } from './Icons';
 
 function Header() {
@@ -51,11 +53,47 @@ function Header() {
   );
 }
 
+/** Whether `ref` is the fullscreen element, and a toggle for it. */
+function useFullscreen(ref: RefObject<HTMLElement | null>) {
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const onChange = () => setFull(document.fullscreenElement !== null && document.fullscreenElement === ref.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, [ref]);
+  const toggle = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void ref.current?.requestFullscreen?.().catch(() => {});
+  };
+  return { full, toggle };
+}
+
+/** Who has this stream on screen; the names show on hover. */
+function Viewers({ streamId }: { streamId: string }) {
+  const users = useApp((s) => s.users);
+  const viewers = users.filter((u) => u.watching === streamId && u.id !== streamId);
+  return (
+    <div className="glass ov-tr viewers" tabIndex={0} aria-label={`${viewers.length} watching`}>
+      <EyeIcon size="xs" />
+      {viewers.length}
+      <div className="viewer-list" role="tooltip">
+        <span className="label">{viewers.length ? 'Watching' : 'Nobody watching yet'}</span>
+        {viewers.map((u) => (
+          <span key={u.id} className="viewer">
+            <Avatar id={u.id} name={u.name} color={u.color} size={20} />
+            {u.name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FocusedStream({ stream }: { stream: StreamInfo }) {
   const ref = useRef<HTMLDivElement>(null);
+  const { full, toggle: toggleFullscreen } = useFullscreen(ref);
   const showStats = useSettings((s) => s.showStreamStats);
   const streamVolume = useSettings((s) => s.streamVolumes[stream.id] ?? 100);
-  const members = useApp((s) => s.members.length);
   const stats = useStreamStats(stream.track, showStats);
   const soundOff = streamVolume === 0;
 
@@ -65,17 +103,15 @@ function FocusedStream({ stream }: { stream: StreamInfo }) {
   };
 
   return (
-    <div className="stage" ref={ref}>
+    <div className="stage" ref={ref} onDoubleClick={toggleFullscreen}>
       {stream.track ? <TrackVideo track={stream.track} /> : <div className="empty-stage">Loading stream…</div>}
       <div className="ov-tl">
         <span className="live-pill big">LIVE</span>
         <span className="glass ov-label">{stream.isLocal ? `Your stream · ${stream.title}` : `${stream.name} · ${stream.title}`}</span>
       </div>
-      <div className="glass ov-tr" title="Watching">
-        <EyeIcon size="xs" />
-        {Math.max(0, members - 1)}
-      </div>
-      <div className="ov-bottom ctl">
+      <Viewers streamId={stream.id} />
+      {/* Fast clicks on these buttons shouldn't count as a double-click on the stream. */}
+      <div className="ov-bottom ctl" onDoubleClick={(e) => e.stopPropagation()}>
         {(stats || stream.quality) && <span className="glass stats">{stats ?? stream.quality}</span>}
         <span className="spacer" />
         {!stream.isLocal && (
@@ -88,8 +124,13 @@ function FocusedStream({ stream }: { stream: StreamInfo }) {
             <PopoutIcon />
           </button>
         )}
-        <button className="ov glass" title="Fullscreen" aria-label="Fullscreen" onClick={() => void ref.current?.requestFullscreen?.()}>
-          <MaximizeIcon />
+        <button
+          className="ov glass"
+          title={full ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
+          aria-label={full ? 'Exit fullscreen' : 'Fullscreen'}
+          onClick={toggleFullscreen}
+        >
+          {full ? <MinimizeIcon /> : <MaximizeIcon />}
         </button>
       </div>
     </div>
@@ -115,8 +156,8 @@ function StreamTile({ stream }: { stream: StreamInfo }) {
 function PersonTile({ m, big }: { m: VoiceMember; big?: boolean }) {
   if (big) {
     return (
-      <div className={`ptile${m.speaking ? ' speaking' : ''}`} onContextMenu={(e) => openUserMenu(e, m.id)}>
-        <Avatar name={m.name} color={m.color} size={84} />
+      <div className={`ptile${m.speaking ? ' speaking' : ''}`} onClick={(e) => openProfile(e, m.id)} onContextMenu={(e) => openUserMenu(e, m.id)}>
+        <Avatar id={m.id} name={m.name} color={m.color} size={84} />
         <span className="glass name-tag">
           {m.name}{m.isLocal ? ' (you)' : ''}
           {m.micMuted && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
@@ -125,8 +166,8 @@ function PersonTile({ m, big }: { m: VoiceMember; big?: boolean }) {
     );
   }
   return (
-    <div className={`tile${m.speaking ? ' speaking' : ''}`} onContextMenu={(e) => openUserMenu(e, m.id)}>
-      <Avatar name={m.name} color={m.color} size={50} />
+    <div className={`tile${m.speaking ? ' speaking' : ''}`} onClick={(e) => openProfile(e, m.id)} onContextMenu={(e) => openUserMenu(e, m.id)}>
+      <Avatar id={m.id} name={m.name} color={m.color} size={50} />
       <span className="glass name-tag">
         {m.isLocal ? 'You' : m.name}
         {m.micMuted && <span className="flag"><MicOffIcon size="xs" label="Muted" /></span>}
@@ -138,16 +179,12 @@ function PersonTile({ m, big }: { m: VoiceMember; big?: boolean }) {
 function Dock() {
   const muted = useApp((s) => s.muted);
   const deafened = useApp((s) => s.deafened);
-  const myLive = useApp((s) => s.myLive);
   const fullscreen = useApp((s) => s.fullscreen);
   const off = muted || deafened;
   return (
     <div className="dock-wrap">
       <div className="dock">
-        <button className={`go${myLive ? ' on' : ''}`} onClick={() => (myLive ? void stopStream() : setApp({ modal: 'golive', popover: null }))}>
-          <ScreenIcon />
-          {myLive ? 'End stream' : 'Go Live'}
-        </button>
+        <GoLiveButton variant="dock" />
         <span className="divider" />
         <button className={`dk${off ? ' bad' : ''}`} title={off ? 'Unmute' : 'Mute'} aria-label={off ? 'Unmute' : 'Mute'} onClick={() => setMuted(!off)}>
           {off ? <MicOffIcon /> : <MicIcon />}

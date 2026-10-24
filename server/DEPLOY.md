@@ -179,7 +179,7 @@ docker compose restart gateway
 
 **See logs:** `docker compose logs -f gateway` (or `livekit`, `caddy`).
 
-**Back up just the chat history:** it lives in the `gateway-data` volume.
+**Back up chat history, profiles and pictures:** they all live in the `gateway-data` volume.
 
 ```bash
 docker run --rm -v gamespeaker_gateway-data:/data -v "$PWD":/backup alpine tar czf /backup/chat-backup.tgz -C /data .

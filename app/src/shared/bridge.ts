@@ -1,6 +1,9 @@
 // The API the Electron preload exposes as `window.gamespeaker`.
 // In the web build it doesn't exist and the app falls back to browser features.
 
+import type { DetectedGame } from './games';
+export type { DetectedGame };
+
 export type CaptureSource = {
   id: string;
   name: string;
@@ -44,6 +47,12 @@ export interface GamespeakerBridge {
   /** 16-bit stereo 48 kHz PCM chunks while app audio runs. */
   onAppAudio(cb: (chunk: ArrayBuffer) => void): () => void;
 
+  /** Game detection (Windows): which game is open, for one-click streaming and "Playing …". */
+  gamesSupported(): Promise<boolean>;
+  setGameDetection(enabled: boolean): Promise<void>;
+  currentGame(): Promise<DetectedGame | null>;
+  onGameDetected(cb: (game: DetectedGame | null) => void): () => void;
+
   /** Global push-to-talk: works while a game has focus, and the game still gets the key. */
   setPttBinding(binding: PttBinding | null): Promise<void>;
   onPtt(cb: (pressed: boolean) => void): () => void;
@@ -55,6 +64,13 @@ export interface GamespeakerBridge {
 
   setTrayState(state: { muted: boolean; deafened: boolean; inVoice: boolean }): void;
   onTrayAction(cb: (action: 'toggle-mute' | 'toggle-deafen' | 'disconnect') => void): () => void;
+
+  /** Seconds since the last keyboard or mouse input anywhere on the computer. */
+  getIdleSeconds(): Promise<number>;
+  /** Brings the window back, even from the tray. */
+  showWindow(): void;
+  /** Flashes the taskbar button if the window isn't focused. */
+  requestAttention(): void;
 
   getLaunchAtLogin(): Promise<boolean>;
   setLaunchAtLogin(enabled: boolean): Promise<void>;

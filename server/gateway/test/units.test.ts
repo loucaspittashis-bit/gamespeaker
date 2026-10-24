@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -66,10 +67,29 @@ describe('rate limiter', () => {
 });
 
 describe('chat store', () => {
+  it('upgrades an old database and keeps pictures with messages', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'gs-store-')), 'chat.db');
+    // The 0.1.1 table had no attachments column.
+    const old = new DatabaseSync(file);
+    old.exec(`CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, channel TEXT NOT NULL, user_id TEXT NOT NULL,
+      name TEXT NOT NULL, color TEXT NOT NULL, text TEXT NOT NULL, ts INTEGER NOT NULL)`);
+    old.prepare('INSERT INTO messages (channel, user_id, name, color, text, ts) VALUES (?, ?, ?, ?, ?, ?)').run('general', 'u', 'n', '#000000', 'old', 1);
+    old.close();
+
+    const store = new ChatStore(file);
+    const pic = { file: '0123456789abcdef0123456789abcdef.png', width: 640, height: 360 };
+    store.add({ channel: 'general', userId: 'u', name: 'n', color: '#000000', text: '', attachments: [pic], ts: 2 });
+    const { messages } = store.history('general');
+    assert.deepEqual(messages.map((m) => m.attachments), [[], [pic]]);
+    assert.equal(store.usesMedia(pic.file), true);
+    assert.equal(store.usesMedia('ffffffffffffffffffffffffffffffff.png'), false);
+    store.close();
+  });
+
   it('stores and pages history oldest-first', () => {
     const store = new ChatStore(join(mkdtempSync(join(tmpdir(), 'gs-store-')), 'chat.db'));
-    for (let i = 1; i <= 5; i++) store.add({ channel: 'general', userId: 'u', name: 'n', color: '#000000', text: `m${i}`, ts: i });
-    store.add({ channel: 'clips', userId: 'u', name: 'n', color: '#000000', text: 'other', ts: 9 });
+    for (let i = 1; i <= 5; i++) store.add({ channel: 'general', userId: 'u', name: 'n', color: '#000000', text: `m${i}`, attachments: [], ts: i });
+    store.add({ channel: 'clips', userId: 'u', name: 'n', color: '#000000', text: 'other', attachments: [], ts: 9 });
 
     const latest = store.history('general', undefined, 2);
     assert.deepEqual(latest.messages.map((m) => m.text), ['m4', 'm5']);

@@ -2,6 +2,7 @@ import { useApp, setApp, toast } from '../state/store';
 import { useSettings, updateSettings } from '../lib/settings';
 import { setFocus } from '../lib/voice';
 import { Avatar } from './Avatar';
+import { openProfile } from './ProfileCard';
 import { CheckIcon, EyeIcon } from './Icons';
 
 export function ContextMenu() {
@@ -28,13 +29,13 @@ export function ContextMenu() {
     <>
       <button className="pop-backdrop" style={{ zIndex: 40 }} aria-label="Close menu" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} />
       <div className="ctx" role="menu" aria-label={`${name} options`} style={{ left: ctx.x, top: ctx.y }}>
-        <div className="who">
-          <Avatar name={name} color={color} size={32} />
+        <button className="who hv" title="View profile" onClick={(e) => openProfile(e, id, { name, color })}>
+          <Avatar id={id} name={name} color={color} size={32} />
           <span>
             <b>{name}</b>
             <small>{where ? `In ${where}` : 'Online'}</small>
           </span>
-        </div>
+        </button>
         <div className="vol">
           <label className="label" htmlFor="user-vol"><span>Volume</span><span>{volume}%</span></label>
           <input

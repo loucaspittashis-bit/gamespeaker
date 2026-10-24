@@ -305,7 +305,7 @@ function PeopleCard() {
       <div className="adm-list">
         {users.map((u) => (
           <div key={u.id} className="adm-row">
-            <Avatar name={u.name} color={u.color} size={32} />
+            <Avatar id={u.id} name={u.name} color={u.color} size={32} />
             <div className="grow who">
               <b>{u.name}</b>
               <small>{where(u.channel)}</small>

@@ -74,4 +74,6 @@ export const sounds = {
   /** A stream ended: two soft falling notes. */
   streamStop: () => play([{ freq: 392, at: 0, dur: 0.22, gain: 0.065 }, { freq: 262, at: 0.11, dur: 0.34, gain: 0.065 }]),
   message: () => play([{ freq: 330, at: 0, dur: 0.14, gain: 0.035 }]),
+  /** Someone @mentioned you: two quick soft notes, a little brighter than a message. */
+  mention: () => play([{ freq: 392, at: 0, dur: 0.14, gain: 0.05 }, { freq: 523, at: 0.09, dur: 0.22, gain: 0.05 }]),
 };

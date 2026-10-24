@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar';
 import { VoiceView } from './components/VoiceView';
 import { MembersPanel, TextView, VoiceChatPanel } from './components/Chat';
 import { ContextMenu } from './components/ContextMenu';
+import { closeProfile, ProfilePopover } from './components/ProfileCard';
 import { GoLiveModal } from './components/GoLive';
 import { SettingsModal } from './components/Settings';
 import { Welcome } from './components/Welcome';
@@ -20,6 +21,21 @@ function Toasts() {
       {toasts.map((t) => (
         <div key={t.id} className={`toast glass${t.tone === 'warn' ? ' warn' : ''}`} role="status"><i />{t.text}</div>
       ))}
+    </div>
+  );
+}
+
+function Lightbox() {
+  const url = useApp((s) => s.lightbox);
+  if (!url) return null;
+  const close = () => setApp({ lightbox: null });
+  return (
+    <div className="lightbox" role="dialog" aria-modal="true" aria-label="Picture" onClick={close}>
+      <img src={url} alt="" onClick={(e) => e.stopPropagation()} />
+      <div className="lb-bar" onClick={(e) => e.stopPropagation()}>
+        <a className="btn-plain" href={url} target="_blank" rel="noreferrer">Open original</a>
+        <button className="btn-plain" onClick={close}>Close</button>
+      </div>
     </div>
   );
 }
@@ -59,6 +75,8 @@ function Shell() {
         {!inVoiceView && <MembersPanel />}
       </div>
       <ContextMenu />
+      <ProfilePopover />
+      <Lightbox />
       {modal === 'golive' && <GoLiveModal />}
       {modal === 'settings' && <SettingsModal />}
     </div>
@@ -80,6 +98,8 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const s = useApp.getState();
       if (e.key === 'Escape') {
+        if (s.lightbox) return setApp({ lightbox: null });
+        if (closeProfile()) return;
         if (s.ctxMenu || s.popover) setApp({ ctxMenu: null, popover: null });
         else if (s.modal) setApp({ modal: null });
         else if (s.fullscreen) setApp({ fullscreen: false });

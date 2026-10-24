@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CaptureSource } from '../../../shared/bridge';
-import { useApp, setApp } from '../state/store';
+import { app, useApp, setApp } from '../state/store';
 import { bridge, isDesktop } from '../lib/platform';
 import { RESOLUTIONS_OFFERED, useSettings, updateSettings, type Resolution } from '../lib/settings';
 import { BITRATES, pickCodec, uploadNeeded, type CodecChoice } from '../lib/streaming';
@@ -48,7 +48,9 @@ export function GoLiveModal() {
         }
         const list = result.sources;
         setSources(list);
-        const firstWindow = list.find((s) => s.kind === 'window');
+        // Start on the open game if there is one.
+        const game = app().game;
+        const firstWindow = list.find((s) => s.id === game?.sourceId) ?? list.find((s) => s.kind === 'window');
         setTab(firstWindow ? 'window' : 'screen');
         setSelected((firstWindow ?? list[0])?.id ?? null);
       })
@@ -82,12 +84,15 @@ export function GoLiveModal() {
   const mbps = BITRATES[res][fps];
   const upload = uploadNeeded(mbps);
 
+  const game = useApp((s) => s.game);
+
   const go = async () => {
     setStarting(true);
     updateSettings({ streamRes: res, streamFps: fps });
     const ok = await startStream({
       sourceId: chosen?.id ?? null,
-      title: chosen ? chosen.name.slice(0, 60) : 'Screen',
+      // A detected game streams under its proper name, not the window title.
+      title: chosen ? (chosen.id === game?.sourceId ? game.name : chosen.name.slice(0, 60)) : 'Screen',
       res,
       fps,
       mode,
@@ -139,7 +144,8 @@ export function GoLiveModal() {
                     </span>
                     <span className="cap">
                       {s.appIcon && <img src={s.appIcon} alt="" />}
-                      <b title={s.name}>{s.name}</b>
+                      <b title={s.name}>{s.id === game?.sourceId ? game.name : s.name}</b>
+                      {s.id === game?.sourceId && <span className="chip neon game-chip">Game</span>}
                     </span>
                   </button>
                 ))}
