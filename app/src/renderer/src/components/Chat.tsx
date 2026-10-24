@@ -200,8 +200,8 @@ export function VoiceChatPanel() {
       <header className="head">
         <span className="ic"><ChatIcon size="s" /></span>
         <span className="titles">
-          <span className="disp" style={{ fontWeight: 700 }}>{name} chat</span>
-          <small>Saved on your server</small>
+          <span className="disp" style={{ fontWeight: 700 }}>{name} · voice chat</span>
+          <small title={`Everyone in ${name} sees this · saved on your server`}>Everyone in {name} sees this · saved on your server</small>
         </span>
         <button className="ib" title="Close chat" aria-label="Close chat" onClick={() => setApp({ chatOpen: false })}><CloseIcon /></button>
       </header>

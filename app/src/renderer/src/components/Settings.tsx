@@ -368,8 +368,8 @@ function Streaming() {
           <div>
             <div className="label" style={{ marginBottom: 8 }}>Default quality</div>
             <div className="seg">
-              {(['1080p60', '1440p60', '4K60'] as const).map((q) => (
-                <button key={q} aria-pressed={quality === q} onClick={() => updateSettings({ streamRes: q.replace('60', '') as '1080p' | '1440p' | '4K', streamFps: 60 })}>{q}</button>
+              {(['1080p60', '1440p60'] as const).map((q) => (
+                <button key={q} aria-pressed={quality === q} onClick={() => updateSettings({ streamRes: q.replace('60', '') as '1080p' | '1440p', streamFps: 60 })}>{q}</button>
               ))}
             </div>
           </div>

@@ -12,6 +12,7 @@ const bridge: GamespeakerBridge = {
   version: String(ipcRenderer.sendSync('app:version') ?? ''),
 
   listCaptureSources: () => ipcRenderer.invoke('capture:list'),
+  openScreenPermissionSettings: () => ipcRenderer.invoke('capture:open-permission-settings'),
   selectCaptureSource: (id) => ipcRenderer.invoke('capture:select', id),
 
   appAudioSupported: () => ipcRenderer.invoke('capture:app-audio-supported'),

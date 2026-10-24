@@ -9,6 +9,10 @@ export type CaptureSource = {
   appIcon: string | null; // data URL
 };
 
+export type CaptureListResult =
+  | { ok: true; sources: CaptureSource[] }
+  | { ok: false; reason: 'permission' | 'error'; message: string };
+
 export type PttBinding =
   | { kind: 'key'; code: number; label: string }
   | { kind: 'mouse'; button: number; label: string };
@@ -27,7 +31,9 @@ export interface GamespeakerBridge {
   version: string;
 
   /** Windows and screens for the Go Live picker, with thumbnails. */
-  listCaptureSources(): Promise<CaptureSource[]>;
+  listCaptureSources(): Promise<CaptureListResult>;
+  /** macOS: opens Privacy & Security > Screen Recording. */
+  openScreenPermissionSettings(): Promise<void>;
   /** The source the next getDisplayMedia call should capture. */
   selectCaptureSource(id: string): Promise<void>;
 

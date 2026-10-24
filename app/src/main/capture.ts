@@ -1,6 +1,10 @@
-import { desktopCapturer, ipcMain, session, type BrowserWindow } from 'electron';
+import { desktopCapturer, ipcMain, session, shell, systemPreferences, type BrowserWindow } from 'electron';
 import { nodeRequire } from './native';
-import type { AppAudioStatus, CaptureSource } from '../shared/bridge';
+import type { AppAudioStatus, CaptureListResult } from '../shared/bridge';
+
+const SCREEN_PERMISSION_HELP =
+  'macOS needs permission before Gamespeaker can share your screen. Turn it on in System Settings → ' +
+  'Privacy & Security → Screen & System Audio Recording, then quit and reopen Gamespeaker.';
 
 // Optional Windows-only native modules. They aren't installed on other platforms.
 type LoopbackCapture = {
@@ -43,22 +47,43 @@ function stopAppAudio(): void {
 }
 
 export function registerCapture(getWindow: () => BrowserWindow | null): void {
-  ipcMain.handle('capture:list', async (): Promise<CaptureSource[]> => {
-    const sources = await desktopCapturer.getSources({
-      types: ['window', 'screen'],
-      thumbnailSize: { width: 480, height: 270 },
-      fetchWindowIcons: true,
-    });
-    const ownTitle = getWindow()?.getTitle();
-    return sources
-      .filter((s) => s.name && s.name !== ownTitle && !s.name.startsWith('Gamespeaker stream'))
-      .map((s) => ({
-        id: s.id,
-        name: s.name,
-        kind: s.id.startsWith('screen:') ? 'screen' : 'window',
-        thumbnail: s.thumbnail.toDataURL(),
-        appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
-      }));
+  ipcMain.handle('capture:list', async (): Promise<CaptureListResult> => {
+    const isMac = process.platform === 'darwin';
+    try {
+      // On macOS the first call also makes the system ask for Screen Recording permission.
+      const sources = await desktopCapturer.getSources({
+        types: ['window', 'screen'],
+        thumbnailSize: { width: 480, height: 270 },
+        fetchWindowIcons: true,
+      });
+      if (isMac && systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
+        return { ok: false, reason: 'permission', message: SCREEN_PERMISSION_HELP };
+      }
+      const ownTitle = getWindow()?.getTitle();
+      return {
+        ok: true,
+        sources: sources
+          .filter((s) => s.name && s.name !== ownTitle && !s.name.startsWith('Gamespeaker stream'))
+          .map((s) => ({
+            id: s.id,
+            name: s.name,
+            kind: s.id.startsWith('screen:') ? ('screen' as const) : ('window' as const),
+            thumbnail: s.thumbnail.toDataURL(),
+            appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+          })),
+      };
+    } catch (err) {
+      if (isMac && systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
+        return { ok: false, reason: 'permission', message: SCREEN_PERMISSION_HELP };
+      }
+      return { ok: false, reason: 'error', message: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('capture:open-permission-settings', async () => {
+    if (process.platform === 'darwin') {
+      await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
+    }
   });
 
   ipcMain.handle('capture:select', (_e, id: string) => {

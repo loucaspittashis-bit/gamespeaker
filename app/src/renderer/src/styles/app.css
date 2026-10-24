@@ -760,7 +760,8 @@ input[type='range'] { width: 100%; accent-color: var(--neon); }
 .chat-side { flex: 1 1 320px; min-width: 280px; max-width: 400px; display: flex; flex-direction: column; overflow: hidden; }
 .chat-side .head { padding: 0 8px 0 16px; }
 .chat-side .head .titles { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.chat-side .head .titles small { font-size: 11px; color: var(--mute); }
+.chat-side .head .titles > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-side .head .titles small { font-size: 11px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .members-side { flex: 1 1 260px; min-width: 220px; max-width: 320px; display: flex; flex-direction: column; padding: 18px 10px; }
 .members-side .label { padding: 0 8px 10px; }

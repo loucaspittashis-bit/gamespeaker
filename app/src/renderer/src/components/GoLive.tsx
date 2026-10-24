@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import type { CaptureSource } from '../../../shared/bridge';
 import { useApp, setApp } from '../state/store';
 import { bridge, isDesktop } from '../lib/platform';
-import { useSettings, updateSettings, type Resolution } from '../lib/settings';
+import { RESOLUTIONS_OFFERED, useSettings, updateSettings, type Resolution } from '../lib/settings';
 import { BITRATES, pickCodec, uploadNeeded, type CodecChoice } from '../lib/streaming';
 import { startStream } from '../lib/voice';
 import { CheckIcon, CloseIcon, ScreenIcon } from './Icons';
 
-const RES_OPTIONS: Resolution[] = ['720p', '1080p', '1440p', '4K'];
+const RES_OPTIONS: Resolution[] = RESOLUTIONS_OFFERED;
 
 export function GoLiveModal() {
   const channelName = useApp((s) => s.channels.find((c) => c.id === s.voiceChannel)?.name ?? 'voice');
@@ -15,15 +15,50 @@ export function GoLiveModal() {
   const [tab, setTab] = useState<'window' | 'screen'>('window');
   const [sources, setSources] = useState<CaptureSource[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [res, setRes] = useState<Resolution>(defaults.streamRes);
+  const [res, setRes] = useState<Resolution>(RES_OPTIONS.includes(defaults.streamRes) ? defaults.streamRes : '1440p');
   const [fps, setFps] = useState<30 | 60>(defaults.streamFps);
   const [mode, setMode] = useState<'game' | 'screen'>('game');
   const [audio, setAudio] = useState(true);
   const [audioSupported, setAudioSupported] = useState(!isDesktop);
   const [codec, setCodec] = useState<CodecChoice | null>(null);
   const [starting, setStarting] = useState(false);
+  const [listError, setListError] = useState<{ reason: 'permission' | 'error'; message: string } | null>(null);
 
   const close = () => setApp({ modal: null });
+
+  const loadSources = () => {
+    if (!bridge) return;
+    setSources(null);
+    setListError(null);
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setListError({ reason: 'error', message: 'Listing windows took too long.' });
+    }, 10_000);
+    bridge
+      .listCaptureSources()
+      .then((result) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        if (!result.ok) {
+          setListError({ reason: result.reason, message: result.message });
+          return;
+        }
+        const list = result.sources;
+        setSources(list);
+        const firstWindow = list.find((s) => s.kind === 'window');
+        setTab(firstWindow ? 'window' : 'screen');
+        setSelected((firstWindow ?? list[0])?.id ?? null);
+      })
+      .catch((err: unknown) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        setListError({ reason: 'error', message: err instanceof Error ? err.message : String(err) });
+      });
+  };
 
   useEffect(() => {
     if (!bridge) return;
@@ -31,12 +66,7 @@ export function GoLiveModal() {
       setAudioSupported(ok);
       if (!ok) setAudio(false);
     });
-    void bridge.listCaptureSources().then((list) => {
-      setSources(list);
-      const firstWindow = list.find((s) => s.kind === 'window');
-      setTab(firstWindow ? 'window' : 'screen');
-      setSelected((firstWindow ?? list[0])?.id ?? null);
-    });
+    loadSources();
   }, []);
 
   useEffect(() => {
@@ -86,8 +116,20 @@ export function GoLiveModal() {
                 <button aria-pressed={tab === 'window'} onClick={() => setTab('window')}>Applications</button>
                 <button aria-pressed={tab === 'screen'} onClick={() => setTab('screen')}>Screens</button>
               </div>
+              {listError && (
+                <div className="card" role="alert" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <b>{listError.reason === 'permission' ? 'Screen sharing needs your permission' : "Couldn't list your windows"}</b>
+                  <span style={{ color: 'var(--sub)', fontSize: 13 }}>{listError.message}</span>
+                  <span style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {listError.reason === 'permission' && (
+                      <button className="btn-soft" onClick={() => void bridge?.openScreenPermissionSettings()}>Open System Settings</button>
+                    )}
+                    <button className="btn-plain" onClick={loadSources}>Try again</button>
+                  </span>
+                </div>
+              )}
               <div className="sources">
-                {sources === null && <div style={{ color: 'var(--mute)' }}>Finding windows…</div>}
+                {sources === null && !listError && <div style={{ color: 'var(--mute)' }}>Finding windows…</div>}
                 {sources !== null && shown.length === 0 && <div style={{ color: 'var(--mute)' }}>Nothing to share here.</div>}
                 {shown.map((s) => (
                   <button key={s.id} className="source" aria-pressed={s.id === selected} onClick={() => setSelected(s.id)}>
@@ -161,13 +203,6 @@ export function GoLiveModal() {
                 ? 'No hardware video encoder found, so the CPU encodes. Keep it at 1080p or below for smooth streams.'
                 : 'Your graphics card encodes the video. Small tiles get a 360p preview, so friends only download the stream they watch at full quality.'}
             </div>
-            {res === '4K' && (
-              <div className="warnbox">
-                {fps === 60
-                  ? `4K60 needs about ${upload} Mbps of upload. Most home connections are slower, so 1440p60 is the safe pick.`
-                  : `4K30 needs about ${upload} Mbps of upload. Run a speed test first.`}
-              </div>
-            )}
           </div>
         </div>
 

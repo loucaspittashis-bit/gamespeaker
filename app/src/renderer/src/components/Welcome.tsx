@@ -10,7 +10,7 @@ import { ArrowRightIcon, CheckIcon, LockIcon, LogoIcon } from './Icons';
 
 const FEATURES = [
   { title: 'Voice that feels like the same room', sub: 'Noise suppression, echo cancellation, volume per friend.' },
-  { title: 'Streams up to 4K60', sub: 'Several times the bitrate you are used to, with game sound.' },
+  { title: 'Streams up to 1440p60', sub: 'Several times the bitrate you are used to, with game sound.' },
   { title: 'Always on, only for you', sub: 'Your own server, running 24/7. Chat history stays.' },
 ];
 

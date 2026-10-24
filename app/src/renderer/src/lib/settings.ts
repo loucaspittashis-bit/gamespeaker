@@ -5,7 +5,8 @@ import type { PttBinding } from '../../../shared/bridge';
 export type Glow = 'off' | 'soft' | 'full';
 export type InputMode = 'va' | 'ptt';
 export type NoiseLevel = 'off' | 'standard' | 'high';
-export type Resolution = '720p' | '1080p' | '1440p' | '4K';
+export type Resolution = '720p' | '1080p' | '1440p';
+export const RESOLUTIONS_OFFERED: Resolution[] = ['720p', '1080p', '1440p'];
 
 export type WebPtt = { code: string; label: string };
 
@@ -102,8 +103,14 @@ export const useSettings = create<SettingsStore>()(
     }),
     {
       name: 'gamespeaker.settings',
-      version: 1,
+      version: 2,
       partialize: ({ set: _set, ...rest }) => rest,
+      // v2: streaming tops out at 1440p; older saved defaults of 4K become 1440p.
+      migrate: (persisted) => {
+        const s = (persisted ?? {}) as Partial<Settings>;
+        if (s.streamRes && !RESOLUTIONS_OFFERED.includes(s.streamRes)) s.streamRes = '1440p';
+        return s as SettingsStore;
+      },
     },
   ),
 );

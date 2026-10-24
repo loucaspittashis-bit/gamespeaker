@@ -6,7 +6,6 @@ export const RESOLUTIONS: Record<Resolution, { width: number; height: number }> 
   '720p': { width: 1280, height: 720 },
   '1080p': { width: 1920, height: 1080 },
   '1440p': { width: 2560, height: 1440 },
-  '4K': { width: 3840, height: 2160 },
 };
 
 /** Target bitrates in Mbps. Viewers' connections decide how much of this they get. */
@@ -14,7 +13,6 @@ export const BITRATES: Record<Resolution, Record<30 | 60, number>> = {
   '720p': { 30: 3, 60: 5 },
   '1080p': { 30: 5, 60: 8 },
   '1440p': { 30: 10, 60: 16 },
-  '4K': { 30: 20, 60: 35 },
 };
 
 /** Upload the streamer needs: the main stream plus the small preview layer and overhead. */
@@ -37,7 +35,7 @@ async function hardwareEncodes(mime: string, width: number, height: number, fps:
 }
 
 /**
- * 4K60 is only realistic on a hardware encoder, so pick by what this GPU can do:
+ * 1440p60 needs a hardware encoder to stay smooth, so pick by what this GPU can do:
  * AV1 (RTX 40/50, RX 7000+, Arc), then H.264, then VP9. Without any hardware
  * encoder, fall back to H.264 in software.
  */

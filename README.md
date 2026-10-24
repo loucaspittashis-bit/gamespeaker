@@ -1,7 +1,7 @@
 # Gamespeaker
 
 Our own private voice, chat and streaming server. Voice that feels like the same room,
-streams up to 4K60, chat history that stays, and nobody else on it.
+streams up to 1440p60, chat history that stays, and nobody else on it.
 
 ## Join (for friends)
 
@@ -34,8 +34,8 @@ in a game and per-app stream sound.
 | Change your neon color | The palette icon at the top of a voice channel, or Settings → Appearance |
 | Clean up a noisy mic | Settings → Voice & audio → Noise suppression: Standard or High |
 
-**Stream quality and your upload speed:** 1080p60 needs about 10 Mbps of upload, 1440p60 about
-19 Mbps, and 4K60 about 40 Mbps. Run a speed test before going 4K.
+**Stream quality and your upload speed:** 1080p60 needs about 10 Mbps of upload and 1440p60 about
+19 Mbps. Check your upload at speedtest.net; if it's below 19 Mbps, stream at 1080p60.
 
 ---
 
