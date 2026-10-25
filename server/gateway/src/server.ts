@@ -184,6 +184,10 @@ export function createGateway(config: Config): Gateway {
   const adminLimiter = new RateLimiter(5, 10 * 60_000);
   const tokenLimiter = new RateLimiter(60, 60_000);
   const chatLimiter = new RateLimiter(8, 10_000);
+  // Messages by sender + nonce for a while: an app that lost the reply (connection
+  // dropped) sends the same message again on reconnect, and must not post it twice.
+  const recentSends = new Map<string, { msg: unknown; at: number }>();
+  const RESEND_WINDOW_MS = 10 * 60 * 1000;
   const uploadLimiter = new RateLimiter(20, 10 * 60_000);
   const chatUploadLimiter = new RateLimiter(40, 10 * 60_000);
   const conns = new Set<Conn>();
@@ -575,7 +579,7 @@ export function createGateway(config: Config): Gateway {
       conn.alive = true;
     });
 
-    ws.on('message', (data: RawData) => {
+    const onMessage = (data: RawData): void => {
       let msg: Record<string, unknown>;
       try {
         const parsed: unknown = JSON.parse(data.toString());
@@ -614,6 +618,15 @@ export function createGateway(config: Config): Gateway {
       }
 
       handleMessage(conn, conn.session, msg);
+    };
+    // One bad message (or a database error) must not take the server down for everyone.
+    ws.on('message', (data: RawData) => {
+      try {
+        onMessage(data);
+      } catch (err) {
+        log(`message failed: ${err instanceof Error ? err.message : String(err)}`);
+        send(conn, { t: 'error', code: 'internal' });
+      }
     });
 
     ws.on('close', () => {
@@ -673,6 +686,9 @@ export function createGateway(config: Config): Gateway {
         const text = typeof msg.text === 'string' ? msg.text.trim() : '';
         const nonce = typeof msg.nonce === 'string' ? msg.nonce.slice(0, 64) : undefined;
         if (!chatIds.has(channel)) return send(conn, { t: 'error', code: 'unknown_channel', nonce });
+        const sendKey = nonce ? `${session.sub}:${nonce}` : null;
+        const already = sendKey ? recentSends.get(sendKey) : undefined;
+        if (already) return send(conn, { t: 'chat', msg: already.msg, nonce });
         const attachments = parseAttachments(msg.attachments);
         if (!attachments) return send(conn, { t: 'error', code: 'invalid_attachments', nonce });
         if ((!text && !attachments.length) || text.length > MAX_CHAT_CHARS) return send(conn, { t: 'error', code: 'invalid_text', nonce });
@@ -680,6 +696,12 @@ export function createGateway(config: Config): Gateway {
         const saved = store.add({
           channel, userId: session.sub, name: session.name, color: session.color, text, attachments, ts: Date.now(),
         });
+        if (sendKey) {
+          const now = Date.now();
+          for (const [k, v] of recentSends) if (now - v.at > RESEND_WINDOW_MS) recentSends.delete(k);
+          else break; // oldest first: the rest are newer
+          recentSends.set(sendKey, { msg: saved, at: now });
+        }
         broadcast({ t: 'chat', msg: saved, nonce });
         return;
       }

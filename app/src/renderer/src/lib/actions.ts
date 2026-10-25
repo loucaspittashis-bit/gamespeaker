@@ -29,7 +29,10 @@ export async function logout(): Promise<void> {
   gateway?.close();
   gateway = null;
   updateSettings({ session: null, adminToken: null, adminExpiresAt: 0 });
-  setApp({ phase: 'welcome', me: null, users: [], messages: {}, historyLoaded: {}, modal: null, adminAvailable: false, profiles: {}, profileCard: null });
+  setApp({
+    phase: 'welcome', me: null, users: [], messages: {}, historyLoaded: {}, hasMore: {}, pending: [], mentionCounts: {}, typing: {},
+    modal: null, adminAvailable: false, profiles: {}, profileCard: null,
+  });
 }
 
 export async function updateProfile(patch: { name?: string; color?: string }): Promise<void> {
@@ -120,6 +123,7 @@ export function startSession(): void {
 }
 
 function connectGateway(session: string): void {
+  gateway?.close();
   gateway = new GatewayClient(gatewaySocketUrl(), session, {
     onStatus: (gatewayStatus) => setApp({ gatewayStatus }),
 
@@ -138,8 +142,8 @@ function connectGateway(session: string): void {
       }));
       // Load recent history everywhere so unread dots are right from the start.
       for (const c of channels) gateway?.send({ t: 'history', channel: c.id, limit: 50 });
-      // Resend anything typed while offline, and our voice state.
-      for (const p of app().pending) gateway?.send({ t: 'chat', channel: p.channel, text: p.text, attachments: p.attachments, nonce: p.nonce });
+      // Resend anything typed while offline (not ones the server refused), and our voice state.
+      for (const p of app().pending.filter((x) => !x.failed)) gateway?.send({ t: 'chat', channel: p.channel, text: p.text, attachments: p.attachments, nonce: p.nonce });
       syncPresence(true);
     },
 
@@ -175,9 +179,13 @@ function connectGateway(session: string): void {
     },
 
     onHistory: ({ channel, before, messages, hasMore }) => {
+      if (before) loadingOlder.delete(channel);
       setApp((s) => {
         const existing = s.messages[channel] ?? [];
-        const merged = before ? [...messages, ...existing] : mergeById(messages, existing);
+        // Back from a long time offline with more than a page missed: start from the
+        // newest page rather than leave a hole that "Load older" would skip over.
+        const gap = !before && hasMore && messages.length > 0 && existing.length > 0 && messages[0]!.id > existing[existing.length - 1]!.id;
+        const merged = gap ? messages : mergeById(messages, existing);
         return {
           messages: { ...s.messages, [channel]: merged },
           hasMore: { ...s.hasMore, [channel]: hasMore },
@@ -243,15 +251,21 @@ export async function changeServerPassword(password: string): Promise<void> {
     if (st.session) connectGateway(st.session);
     throw err;
   }
-  const { session, user } = await api.login({
-    name: app().me?.name ?? st.nickname,
-    password,
-    deviceId: st.deviceId,
-    color: app().me?.color ?? st.avatarColor,
-  });
-  updateSettings({ session });
-  setApp({ me: user });
-  connectGateway(session);
+  // The new password signed everyone out, us included: sign back in with it.
+  try {
+    const { session, user } = await api.login({
+      name: app().me?.name ?? st.nickname,
+      password,
+      deviceId: st.deviceId,
+      color: app().me?.color ?? st.avatarColor,
+    });
+    updateSettings({ session });
+    setApp({ me: user });
+    connectGateway(session);
+  } catch {
+    await logout();
+    toast('The password changed. Sign in again with the new one.', 'warn');
+  }
 }
 
 /** A desktop notification for an @mention; clicking it opens that chat. */
@@ -266,7 +280,8 @@ function notifyMention(msg: ChatMessage): void {
     bridge?.showWindow();
     window.focus();
     if (channel?.kind === 'text') openTextChannel(channel.id);
-    else if (channel) setApp({ view: 'voice', chatOpen: true });
+    // A voice channel's chat can only be shown while you're in that channel.
+    else if (channel && app().voiceChannel === channel.id) setApp({ view: 'voice', chatOpen: true, fullscreen: false });
     n.close();
   };
 }
@@ -286,8 +301,10 @@ function removeTyping(typing: ReturnType<typeof app>['typing'], channel: string,
 export function isChannelVisible(channel: string): boolean {
   const s = app();
   if (document.hidden) return false;
-  if (s.view === 'text') return s.textChannel === channel;
-  return s.voiceChannel === channel && s.chatOpen;
+  // Same rule as the screen itself: the voice view only shows while you're in voice.
+  if (!(s.view === 'voice' && s.voiceChannel)) return s.textChannel === channel;
+  // The voice chat panel is hidden in theater mode and in fullscreen.
+  return s.voiceChannel === channel && s.chatOpen && !s.fullscreen && !document.fullscreenElement;
 }
 
 export function sendChat(channel: string, text: string, attachments: Attachment[] = []): void {
@@ -305,9 +322,18 @@ export function retryPending(nonce: string): void {
   gateway?.send({ t: 'chat', channel: p.channel, text: p.text, attachments: p.attachments, nonce: p.nonce });
 }
 
+/** Throws away a message the server refused. */
+export function discardPending(nonce: string): void {
+  setApp((s) => ({ pending: s.pending.filter((x) => x.nonce !== nonce) }));
+}
+
+/** Channels with an older page on its way (a double click asks only once). */
+const loadingOlder = new Set<string>();
+
 export function loadOlder(channel: string): void {
   const first = app().messages[channel]?.[0];
-  if (first) gateway?.send({ t: 'history', channel, before: first.id, limit: 50 });
+  if (!first || loadingOlder.has(channel)) return;
+  if (gateway?.send({ t: 'history', channel, before: first.id, limit: 50 })) loadingOlder.add(channel);
 }
 
 export function sendTyping(channel: string): void {

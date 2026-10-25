@@ -1,4 +1,4 @@
-import { ipcMain, type BrowserWindow } from 'electron';
+import { ipcMain, powerMonitor, type BrowserWindow } from 'electron';
 import { nodeRequire } from './native';
 import type { PttBinding } from '../shared/bridge';
 
@@ -71,6 +71,11 @@ export function registerPtt(getWindow: () => BrowserWindow | null): void {
     sync();
     done?.(b);
   };
+
+  // The key can be let go where the hook can't see it (Ctrl+Alt+Del, the lock
+  // screen, a UAC prompt). Locking or sleeping always ends a push-to-talk press.
+  powerMonitor.on('lock-screen', () => send(false));
+  powerMonitor.on('suspend', () => send(false));
 
   if (hook) {
     hook.on('keydown', (e) => {

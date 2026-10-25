@@ -4,6 +4,7 @@ import rnnoiseWasmUrl from '@sapphi-red/web-noise-suppressor/rnnoise.wasm?url';
 import rnnoiseSimdWasmUrl from '@sapphi-red/web-noise-suppressor/rnnoise_simd.wasm?url';
 import gtcrnWorkletUrl from '@sapphi-red/web-noise-suppressor/gtcrnWorklet.js?url';
 import gtcrnWasmUrl from '@sapphi-red/web-noise-suppressor/gtcrn.wasm?url';
+import { defaultDeviceName, onDevicesChanged, pickDevice, setContextOutput } from './devices';
 import type { InputMode, NoiseLevel } from './settings';
 
 // The microphone chain, all at 48 kHz:
@@ -13,6 +14,11 @@ import type { InputMode, NoiseLevel } from './settings';
 //
 // The published track never changes; switching mics or noise settings rewires
 // the nodes in front of it, so nobody hears a reconnect.
+//
+// When the PC is too busy for this chain to keep up (a game using every core),
+// the voice it sends breaks up and buzzes. Then goDirect() sends the mic as
+// the system captures it instead, with the browser's own noise suppression,
+// and the chain above only measures the level for the voice gate.
 
 export type MicOptions = {
   deviceId: string;
@@ -55,6 +61,17 @@ export class MicPipeline {
   private noiseFloor = -70;
   private open = false;
   private listeners = new Set<(level: MicLevel) => void>();
+  /** The input actually open: the chosen mic, or the default while it's unplugged. */
+  private inputInUse = '';
+  /** What "default" pointed at when it was opened. */
+  private defaultName = '';
+  private outputChoice = 'default';
+  private destroyed = false;
+  private offDevices: () => void = () => {};
+  /** Direct mode: the mic itself is sent, gated by switching it on and off. */
+  private direct = false;
+  private directTrack: MediaStreamTrack | null = null;
+  private sendListeners = new Set<(track: MediaStreamTrack) => void>();
 
   private constructor(ctx: AudioContext, opts: MicOptions) {
     this.ctx = ctx;
@@ -83,7 +100,31 @@ export class MicPipeline {
     await mic.openDevice();
     await mic.setNoise(opts.noise);
     mic.timer = window.setInterval(() => mic.tick(), TICK_MS);
+    mic.offDevices = onDevicesChanged(() => void mic.devicesChanged());
     return mic;
+  }
+
+  /** The track to publish: the processed one, or in direct mode the mic itself. */
+  get sendTrack(): MediaStreamTrack {
+    return this.directTrack ?? this.track;
+  }
+
+  get isDirect(): boolean {
+    return this.direct;
+  }
+
+  /** Called with the new track whenever sendTrack changes. */
+  onSendTrack(cb: (track: MediaStreamTrack) => void): () => void {
+    this.sendListeners.add(cb);
+    return () => this.sendListeners.delete(cb);
+  }
+
+  /** Stop processing the mic here and send it straight from the system (see the top of this file). */
+  async goDirect(): Promise<void> {
+    if (this.direct || this.destroyed) return;
+    this.direct = true;
+    await this.setNoise('off');
+    await this.openDevice();
   }
 
   onLevel(cb: (level: MicLevel) => void): () => void {
@@ -101,7 +142,8 @@ export class MicPipeline {
       (next.echoCancellation !== undefined && next.echoCancellation !== prev.echoCancellation) ||
       (next.autoGain !== undefined && next.autoGain !== prev.autoGain);
     if (reopen) await this.openDevice();
-    if (next.noise !== undefined && next.noise !== prev.noise) await this.setNoise(next.noise);
+    // Direct mode keeps the browser's suppression; the chosen one comes back next time you join.
+    if (next.noise !== undefined && next.noise !== prev.noise && !this.direct) await this.setNoise(next.noise);
   }
 
   setMuted(muted: boolean): void {
@@ -119,8 +161,8 @@ export class MicPipeline {
   }
 
   async setOutputDevice(deviceId: string): Promise<void> {
-    const ctx = this.ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> };
-    if (ctx.setSinkId) await ctx.setSinkId(deviceId === 'default' ? '' : deviceId).catch(() => {});
+    this.outputChoice = deviceId;
+    await setContextOutput(this.ctx, await pickDevice('audiooutput', deviceId));
   }
 
   get threshold(): number {
@@ -128,10 +170,14 @@ export class MicPipeline {
   }
 
   async destroy(): Promise<void> {
+    this.destroyed = true;
+    this.offDevices();
     if (this.timer) window.clearInterval(this.timer);
     this.listeners.clear();
     this.stream?.getTracks().forEach((t) => t.stop());
     this.track.stop();
+    this.directTrack?.stop();
+    this.sendListeners.clear();
     (this.denoiser as { destroy?: () => void } | null)?.destroy?.();
     await this.ctx.close().catch(() => {});
   }
@@ -141,13 +187,15 @@ export class MicPipeline {
   }
 
   private async openDevice(): Promise<void> {
+    const device = await pickDevice('audioinput', this.opts.deviceId);
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        deviceId: this.opts.deviceId && this.opts.deviceId !== 'default' ? { exact: this.opts.deviceId } : undefined,
+        deviceId: device !== 'default' ? { exact: device } : undefined,
         echoCancellation: this.opts.echoCancellation,
         autoGainControl: this.opts.autoGain,
-        // Our own suppressor (or none, when the user picked Off) replaces the browser's.
-        noiseSuppression: false,
+        // Our own suppressor (or none, when the user picked Off) replaces the browser's,
+        // except in direct mode where the browser's is all there is.
+        noiseSuppression: this.direct && this.opts.noise !== 'off',
         channelCount: 1,
         sampleRate: 48000,
       },
@@ -157,7 +205,39 @@ export class MicPipeline {
     this.stream = stream;
     this.source = this.ctx.createMediaStreamSource(stream);
     this.source.connect(this.inputGain);
+    this.inputInUse = device;
+    if (this.direct) {
+      const old = this.directTrack;
+      this.directTrack = stream.getAudioTracks()[0]!.clone();
+      this.directTrack.enabled = this.open;
+      for (const cb of this.sendListeners) cb(this.directTrack);
+      old?.stop();
+    }
+    this.defaultName = device === 'default' ? await defaultDeviceName('audioinput') : '';
+    // Unplugged (or the headset switched off): carry on with another mic.
+    stream.getAudioTracks()[0]?.addEventListener('ended', () => void this.reopenAfterLoss(stream));
     if (this.ctx.state === 'suspended') await this.ctx.resume().catch(() => {});
+  }
+
+  private async reopenAfterLoss(lost: MediaStream): Promise<void> {
+    if (this.destroyed || lost !== this.stream) return;
+    // Give the system a moment to settle on a new default device.
+    await new Promise((r) => setTimeout(r, 500));
+    if (this.destroyed || lost !== this.stream) return;
+    await this.openDevice().catch(() => {
+      // No mic at all right now; the next device change tries again.
+    });
+  }
+
+  /** A device was plugged in or removed: back to the chosen mic and speakers if they returned. */
+  private async devicesChanged(): Promise<void> {
+    if (this.destroyed) return;
+    const lost = !this.stream?.getAudioTracks().some((t) => t.readyState === 'live');
+    const moved = (await pickDevice('audioinput', this.opts.deviceId)) !== this.inputInUse;
+    // On "Default", follow the system's default mic like Windows does (a headset plugged in).
+    const newDefault = this.inputInUse === 'default' && this.defaultName !== '' && (await defaultDeviceName('audioinput')) !== this.defaultName;
+    if (lost || moved || newDefault) await this.openDevice().catch(() => {});
+    await this.setOutputDevice(this.outputChoice);
   }
 
   private async setNoise(level: NoiseLevel): Promise<void> {
@@ -215,6 +295,8 @@ export class MicPipeline {
       this.open = open;
       this.gate.gain.setTargetAtTime(open ? 1 : 0, this.ctx.currentTime, open ? 0.005 : 0.03);
     }
+    // Direct mode gates the sent mic itself (the voice library may also have touched it).
+    if (this.directTrack && this.directTrack.enabled !== open) this.directTrack.enabled = open;
     for (const cb of this.listeners) cb({ db, open, threshold });
   }
 }

@@ -175,6 +175,26 @@ describe('WebSocket presence and chat', () => {
     b.sock.close();
   });
 
+  it('posts a message resent after a lost reply only once', async () => {
+    const a = await connect(srv.wsUrl, sB);
+    const b = await connect(srv.wsUrl, sA);
+    const seen: number[] = [];
+    const watch = b.sock.next((m) => m.t === 'chat' && m.msg.text === 'just once' && (seen.push(m.msg.id), false), 1500).catch(() => null);
+    a.sock.send({ t: 'chat', channel: 'clips', text: 'just once', nonce: 'dup-1' });
+    const first = await a.sock.next((m) => m.t === 'chat' && m.nonce === 'dup-1');
+    // The same message again, as after a reconnect: confirmed with the original, not posted again.
+    a.sock.send({ t: 'chat', channel: 'clips', text: 'just once', nonce: 'dup-1' });
+    const again = await a.sock.next((m) => m.t === 'chat' && m.nonce === 'dup-1');
+    assert.equal(again.msg.id, first.msg.id);
+    await watch;
+    assert.deepEqual(seen, [first.msg.id]);
+    a.sock.send({ t: 'history', channel: 'clips', limit: 50 });
+    const history = await a.sock.next((m) => m.t === 'history' && m.channel === 'clips');
+    assert.equal(history.messages.filter((m: any) => m.text === 'just once').length, 1);
+    a.sock.close();
+    b.sock.close();
+  });
+
   it('slows down chat floods', async () => {
     const { sock } = await connect(srv.wsUrl, sA);
     for (let i = 0; i < 9; i++) sock.send({ t: 'chat', channel: 'memes', text: `spam ${i}`, nonce: `s${i}` });

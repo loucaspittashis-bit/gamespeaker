@@ -2,12 +2,22 @@
 // Kept deliberately soft and low: sine tones around middle C, quiet, with a
 // gentle fade and a low-pass filter so nothing ends in a sharp click.
 
-import { settings } from './settings';
+import { onDevicesChanged, pickDevice, setContextOutput } from './devices';
+import { settings, useSettings } from './settings';
 
 type Note = { freq: number; at: number; dur: number; gain?: number };
 
 let ctx: AudioContext | null = null;
 let out: AudioNode | null = null;
+
+/** Sounds play on the speakers or headset chosen in settings, like voices do. */
+async function followOutput(): Promise<void> {
+  if (ctx) await setContextOutput(ctx, await pickDevice('audiooutput', settings().outputDevice));
+}
+useSettings.subscribe((s, prev) => {
+  if (s.outputDevice !== prev.outputDevice) void followOutput();
+});
+onDevicesChanged(() => void followOutput());
 
 function output(c: AudioContext): AudioNode {
   if (out) return out;
@@ -23,7 +33,10 @@ function output(c: AudioContext): AudioNode {
 function play(notes: Note[]): void {
   if (!settings().soundEffects) return;
   try {
-    ctx ??= new AudioContext();
+    if (!ctx) {
+      ctx = new AudioContext();
+      void followOutput();
+    }
     if (ctx.state === 'suspended') void ctx.resume();
     const dest = output(ctx);
     const t0 = ctx.currentTime + 0.02;

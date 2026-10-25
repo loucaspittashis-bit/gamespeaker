@@ -29,7 +29,7 @@ export type Config = {
 };
 
 /** Raise this with a release that everyone must have (or set MIN_APP_VERSION). */
-export const DEFAULT_MIN_APP_VERSION = '0.1.10';
+export const DEFAULT_MIN_APP_VERSION = '0.1.11';
 
 export const DEFAULT_CHANNELS: Channel[] = [
   { id: 'lobby', name: 'Lobby', kind: 'voice' },

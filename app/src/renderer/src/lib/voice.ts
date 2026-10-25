@@ -14,6 +14,7 @@ import {
 } from 'livekit-client';
 import { app, setApp, toast } from '../state/store';
 import { ApiError, api } from './api';
+import { onDevicesChanged, pickDevice } from './devices';
 import { MicPipeline, type MicOptions } from './mic';
 import { bridge, isDesktop } from './platform';
 import { settings, useSettings, type Resolution } from './settings';
@@ -67,6 +68,8 @@ export async function getMic(): Promise<MicPipeline> {
       mic = m;
       m.setMuted(app().muted || app().deafened);
       void m.setOutputDevice(settings().outputDevice);
+      // The PC couldn't keep up earlier in this session: start in direct mode.
+      if (micStruggled) void m.goDirect();
       m.onLevel((level) => {
         setApp({ micLevel: level });
         const speaking = level.open && level.db > level.threshold - 4;
@@ -197,6 +200,12 @@ export function volumeGain(percent: number): number {
   return 10 ** (((Math.min(percent, 200) - 100) / 100) * (12 / 20));
 }
 
+/**
+ * The most anyone is boosted, however the sliders combine (a person at 200%
+ * with output at 200% too): beyond this the limiter would squash the sound.
+ */
+const MAX_GAIN = volumeGain(200);
+
 // Remote audio plays through our own AudioContext so volumes can go above 100%.
 let mixContext: AudioContext | null = null;
 const boosts = new WeakMap<RemoteAudioTrack, { gain: GainNode; limiter: DynamicsCompressorNode }>();
@@ -243,8 +252,8 @@ export function applyVolumes(): void {
   // Deafen silences people's voices only; streams keep their sound (each has its own mute).
   const voices = app().deafened ? 0 : output;
   room.remoteParticipants.forEach((p) => {
-    const voice = (s.userMuted[p.identity] ? 0 : volumeGain(s.userVolumes[p.identity] ?? 100)) * voices;
-    const stream = volumeGain(s.streamVolumes[p.identity] ?? 100) * output;
+    const voice = Math.min(MAX_GAIN, (s.userMuted[p.identity] ? 0 : volumeGain(s.userVolumes[p.identity] ?? 100)) * voices);
+    const stream = Math.min(MAX_GAIN, volumeGain(s.streamVolumes[p.identity] ?? 100) * output);
     playAt(p, Track.Source.Microphone, voice);
     playAt(p, Track.Source.ScreenShareAudio, stream);
   });
@@ -347,7 +356,12 @@ export async function joinVoice(channelId: string): Promise<void> {
   notify();
 
   void mixContext?.close().catch(() => {});
-  mixContext = new AudioContext({ latencyHint: 'interactive' });
+  const mix = new AudioContext({ latencyHint: 'interactive' });
+  // Audio devices changing can pause playback; keep everyone audible.
+  mix.addEventListener('statechange', () => {
+    if (mix === mixContext && mix.state === 'suspended') void mix.resume().catch(() => {});
+  });
+  mixContext = mix;
   const r = new Room({
     adaptiveStream: true,
     dynacast: true,
@@ -367,8 +381,8 @@ export async function joinVoice(channelId: string): Promise<void> {
     }
     r.remoteParticipants.forEach(applySubscriptions);
     applyVolumes();
-    const out = settings().outputDevice;
-    if (out && out !== 'default') await r.switchActiveDevice('audiooutput', out).catch(() => {});
+    const out = await pickDevice('audiooutput', settings().outputDevice);
+    if (out !== 'default') await r.switchActiveDevice('audiooutput', out).catch(() => {});
     rejoinAttempts = 0;
     setApp({ voiceStatus: 'connected' });
     refresh();
@@ -413,7 +427,7 @@ async function publishMic(): Promise<boolean> {
     return false;
   }
   if (room !== r) return false;
-  micPub = await r.localParticipant.publishTrack(m.track, {
+  micPub = await r.localParticipant.publishTrack(m.sendTrack, {
     source: Track.Source.Microphone,
     name: 'mic',
     dtx: true,
@@ -421,7 +435,62 @@ async function publishMic(): Promise<boolean> {
     audioPreset: { maxBitrate: 64_000 },
   });
   if (app().muted || app().deafened) await micPub.mute();
+  // Direct mode (or a new mic in it) swaps the sent track without republishing.
+  offSendTrack?.();
+  offSendTrack = m.onSendTrack((track) => void micPub?.track?.replaceTrack(track, true).catch(() => {}));
+  startMicHealth();
   return true;
+}
+
+// ---- Mic health ----
+// If less mic audio reaches the voice connection than time passes, the PC is
+// too busy for the mic chain (noise suppression) to keep up, and friends hear
+// the voice break up and buzz. Spot it within seconds and send the mic direct.
+
+const MIC_CHECK_MS = 2000;
+/** Share of real time below which mic audio is being lost. */
+const MIC_BEHIND = 0.93;
+const MIC_BEHIND_CHECKS = 3;
+let micHealthTimer: number | null = null;
+let offSendTrack: (() => void) | null = null;
+/** Remembered until the app restarts, so the next join starts in direct mode. */
+let micStruggled = false;
+
+function startMicHealth(): void {
+  stopMicHealth();
+  let last: { audio: number; at: number } | null = null;
+  let behind = 0;
+  micHealthTimer = window.setInterval(async () => {
+    const m = mic;
+    const sender = micPub?.track?.sender;
+    if (!m || !sender || m.isDirect) return;
+    let audio = -1;
+    (await sender.getStats().catch(() => null))?.forEach((s: { type: string; kind?: string; totalSamplesDuration?: number }) => {
+      if (s.type === 'media-source' && s.kind === 'audio') audio = s.totalSamplesDuration ?? -1;
+    });
+    const at = performance.now() / 1000;
+    if (audio < 0) return;
+    // Only judge while the mic is on.
+    if (app().muted || app().deafened) {
+      last = null;
+      behind = 0;
+      return;
+    }
+    const prev = last;
+    last = { audio, at };
+    if (!prev) return;
+    behind = (audio - prev.audio) / (at - prev.at) < MIC_BEHIND ? behind + 1 : 0;
+    if (behind < MIC_BEHIND_CHECKS || micHealthTimer === null) return;
+    stopMicHealth();
+    micStruggled = true;
+    await m.goDirect().catch(() => {});
+    toast('Your PC got too busy to keep your mic smooth, so it switched to a lighter mode. If it keeps happening, turn Noise suppression down in Settings.', 'warn');
+  }, MIC_CHECK_MS);
+}
+
+function stopMicHealth(): void {
+  if (micHealthTimer !== null) window.clearInterval(micHealthTimer);
+  micHealthTimer = null;
 }
 
 export async function leaveVoice(opts: { silent?: boolean } = {}): Promise<void> {
@@ -430,6 +499,9 @@ export async function leaveVoice(opts: { silent?: boolean } = {}): Promise<void>
   leaving = true;
   stopPing();
   await stopStream(true);
+  stopMicHealth();
+  offSendTrack?.();
+  offSendTrack = null;
   if (micPub?.track) await r.localParticipant.unpublishTrack(micPub.track, false).catch(() => {});
   micPub = null;
   room = null;
@@ -882,7 +954,7 @@ export function initVoice(): void {
     }
     if (s.outputDevice !== prev.outputDevice) {
       void mic?.setOutputDevice(s.outputDevice);
-      void room?.switchActiveDevice('audiooutput', s.outputDevice).catch(() => {});
+      void followOutputDevice();
     }
     if (s.userVolumes !== prev.userVolumes || s.userMuted !== prev.userMuted || s.streamVolumes !== prev.streamVolumes || s.outputVolume !== prev.outputVolume) {
       applyVolumes();
@@ -890,6 +962,9 @@ export function initVoice(): void {
     }
     if (s.inputMode !== prev.inputMode || s.pttDesktop !== prev.pttDesktop) syncPttBinding();
   });
+
+  // Headset unplugged: voices move to the default speakers; plugged back in: back to it.
+  onDevicesChanged(() => void followOutputDevice());
 
   // Push-to-talk: global hook on desktop, in-window keys on the web.
   syncPttBinding();
@@ -910,6 +985,13 @@ export function initVoice(): void {
     if (action === 'toggle-deafen') setDeafened(!app().deafened);
     if (action === 'disconnect') void leaveVoice();
   });
+}
+
+async function followOutputDevice(): Promise<void> {
+  const r = room;
+  if (!r) return;
+  const out = await pickDevice('audiooutput', settings().outputDevice);
+  if (room === r && r.getActiveDevice('audiooutput') !== out) await r.switchActiveDevice('audiooutput', out).catch(() => {});
 }
 
 function syncPttBinding(): void {

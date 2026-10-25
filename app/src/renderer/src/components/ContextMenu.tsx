@@ -14,6 +14,9 @@ export function ContextMenu() {
   const volume = useSettings((s) => (ctx ? s.userVolumes[ctx.userId] ?? 100 : 100));
   const muted = useSettings((s) => (ctx ? Boolean(s.userMuted[ctx.userId]) : false));
   const streamVolume = useSettings((s) => (ctx ? s.streamVolumes[ctx.userId] ?? 100 : 100));
+  const focus = useApp((s) => s.focus);
+  const focus2 = useApp((s) => s.focus2);
+  // Every hook above this line: React needs the same ones on every render.
   if (!ctx) return null;
 
   const id = ctx.userId;
@@ -23,8 +26,6 @@ export function ContextMenu() {
   const color = pres?.color ?? member?.color ?? '#8b919d';
   const where = channels.find((c) => c.id === pres?.channel)?.name;
   const streaming = streams.some((s) => s.id === id);
-  const focus = useApp((s) => s.focus);
-  const focus2 = useApp((s) => s.focus2);
   const close = () => setApp({ ctxMenu: null });
 
   return (

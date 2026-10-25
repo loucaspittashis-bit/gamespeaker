@@ -80,11 +80,14 @@ if (!app.requestSingleInstanceLock()) {
 if (isWin) app.setAppUserModelId('com.gamespeaker.app');
 
 function showWindow(): void {
-  if (!win) return;
+  if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
   win.show();
   win.focus();
 }
+
+/** Started at login, or restarted by an update while nobody was looking: stay out of the way. */
+let startHidden = false;
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -110,10 +113,20 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  window.once('ready-to-show', () => window.show());
+  // Hidden starts never show the window first (it would pop up over a game):
+  // just wait minimized in the taskbar, or in the tray.
+  window.once('ready-to-show', () => {
+    if (!startHidden) window.show();
+    else if (closeTo !== 'tray') window.minimize();
+  });
 
   window.on('close', (event) => {
-    if (quitting || closeTo === 'quit') return;
+    if (quitting) return;
+    if (closeTo === 'quit') {
+      // macOS keeps apps running with no windows; "Quit" means quit everywhere.
+      if (isMac) app.quit();
+      return;
+    }
     // Keep running so friends can still reach you: minimized in the taskbar, or hidden in the tray.
     event.preventDefault();
     if (closeTo === 'tray') window.hide();
@@ -154,6 +167,7 @@ app.whenReady().then(() => {
   });
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => ALLOWED_PERMISSIONS.has(permission));
 
+  startHidden = process.argv.includes('--hidden') || takeRestartHidden();
   win = createWindow();
   const getWindow = () => win;
 
@@ -169,7 +183,8 @@ app.whenReady().then(() => {
   ipcMain.on('app:version', (event) => {
     event.returnValue = app.getVersion();
   });
-  ipcMain.handle('app:get-launch-at-login',() => app.getLoginItemSettings().openAtLogin);
+  // Ask with the same arguments it was saved with, or Windows reports it as off.
+  ipcMain.handle('app:get-launch-at-login', () => app.getLoginItemSettings({ args: ['--hidden'] }).openAtLogin);
   ipcMain.handle('app:set-launch-at-login', (_e, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: Boolean(enabled), args: ['--hidden'] });
   });
@@ -193,9 +208,6 @@ app.whenReady().then(() => {
   });
   win.on('focus', () => win?.flashFrame(false));
 
-  // Started at login, or updated in the background: don't pop up over everything;
-  // wait minimized in the taskbar (or in the tray).
-  if (process.argv.includes('--hidden') || takeRestartHidden()) win.once('ready-to-show', () => (closeTo === 'tray' ? win?.hide() : win?.minimize()));
 
   app.on('activate', () => showWindow());
 });

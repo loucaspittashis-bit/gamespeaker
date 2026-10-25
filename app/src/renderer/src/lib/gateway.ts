@@ -52,6 +52,10 @@ const CLOSE_SIGNED_OUT = 4003;
 const CLOSE_KICKED = 4004;
 const CLOSE_BANNED = 4005;
 
+const PING_EVERY_MS = 15_000;
+/** No word from the server for this long (three missed pongs): reconnect. */
+const DEAD_AFTER_MS = 50_000;
+
 // Presence + chat connection to the gateway. Reconnects with backoff and
 // re-authenticates; the app re-sends its voice state on every "ready".
 export class GatewayClient {
@@ -60,6 +64,8 @@ export class GatewayClient {
   private retry = 0;
   private retryTimer: number | null = null;
   private pingTimer: number | null = null;
+  /** When the server last said anything; a connection silent for long is dead. */
+  private lastHeard = 0;
   private url: string;
   private session: string;
   private h: GatewayHandlers;
@@ -81,6 +87,7 @@ export class GatewayClient {
     };
 
     ws.onmessage = (ev) => {
+      this.lastHeard = Date.now();
       let msg: any;
       try {
         msg = JSON.parse(String(ev.data));
@@ -123,8 +130,9 @@ export class GatewayClient {
     };
 
     ws.onclose = (ev) => {
+      if (this.ws !== ws) return; // already given up on (see startPing)
+      this.ws = null;
       this.stopPing();
-      if (this.ws === ws) this.ws = null;
       if (this.closed) return;
       if (ev.code === CLOSE_SIGNED_OUT || ev.code === CLOSE_KICKED || ev.code === CLOSE_BANNED) {
         this.closed = true;
@@ -132,10 +140,14 @@ export class GatewayClient {
         else this.h.onRemoved(ev.code === CLOSE_KICKED ? 'kicked' : 'banned');
         return;
       }
-      this.h.onStatus('offline');
-      const delay = Math.min(10_000, 500 * 2 ** this.retry++) + Math.random() * 300;
-      this.retryTimer = window.setTimeout(() => this.connect(), delay);
+      this.reconnectLater();
     };
+  }
+
+  private reconnectLater(): void {
+    this.h.onStatus('offline');
+    const delay = Math.min(10_000, 500 * 2 ** this.retry++) + Math.random() * 300;
+    this.retryTimer = window.setTimeout(() => this.connect(), delay);
   }
 
   get connected(): boolean {
@@ -158,7 +170,20 @@ export class GatewayClient {
 
   private startPing(): void {
     this.stopPing();
-    this.pingTimer = window.setInterval(() => this.send({ t: 'ping' }), 20_000);
+    this.lastHeard = Date.now();
+    this.pingTimer = window.setInterval(() => {
+      // After sleep or a Wi-Fi change the socket can look open while nothing gets
+      // through. The server answers every ping, so silence this long means it's gone.
+      if (Date.now() - this.lastHeard > DEAD_AFTER_MS) {
+        const dead = this.ws;
+        this.ws = null;
+        this.stopPing();
+        dead?.close();
+        this.reconnectLater();
+        return;
+      }
+      this.send({ t: 'ping' });
+    }, PING_EVERY_MS);
   }
 
   private stopPing(): void {

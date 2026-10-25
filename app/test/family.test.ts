@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { familyOf, inFamily, pickFamilyWindow } from '../src/shared/games.ts';
+import { familyOf, inFamily, isFollowable, pickFamilyWindow } from '../src/shared/games.ts';
 
 const lolGame = 'C:\\Riot Games\\League of Legends\\Game\\League of Legends.exe';
 const lolClient = 'C:\\Riot Games\\League of Legends\\LeagueClientUx.exe';
@@ -31,5 +31,21 @@ describe('game families', () => {
     ]);
     assert.deepEqual(pick, { id: 'window:2:0', isGame: true });
     assert.equal(pickFamilyWindow([]), null);
+  });
+});
+
+describe('what follow-the-game follows', () => {
+  it('follows games and their clients, never everyday programs', () => {
+    assert.ok(isFollowable(lolGame));
+    assert.ok(isFollowable(lolClient));
+    assert.ok(!isFollowable('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'));
+    assert.ok(!isFollowable('C:\\Windows\\explorer.exe'));
+  });
+
+  it('never treats a whole game library as one family', () => {
+    const steamGame = 'D:\\SteamLibrary\\steamapps\\common\\Lethal Company\\Lethal Company.exe';
+    assert.equal(familyOf(steamGame).installRoot, null);
+    assert.ok(!inFamily(familyOf(steamGame), 'D:\\SteamLibrary\\steamapps\\common\\Lossless Scaling\\LosslessScaling.exe'));
+    assert.equal(familyOf('D:\\Games\\Valorant\\Valorant.exe').installRoot, null);
   });
 });

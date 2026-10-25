@@ -149,7 +149,9 @@ let toastId = 0;
 export function toast(text: string, tone: Toast['tone'] = 'neon'): void {
   const id = ++toastId;
   setApp((s) => ({ toasts: [...s.toasts.slice(-2), { id, text, tone }] }));
-  window.setTimeout(() => setApp((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 2800);
+  // Long enough to read: about a word every quarter second, between 3 and 9 seconds.
+  const ms = Math.min(9000, Math.max(2800, text.length * 55));
+  window.setTimeout(() => setApp((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), ms);
 }
 
 export function channelById(id: string | null): Channel | undefined {

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
 import { useApp, setApp, toast } from '../state/store';
 import { ApiError, MAX_ATTACHMENTS, api, mediaUrl, type Attachment } from '../lib/api';
-import { isChannelVisible, loadOlder, markRead, retryPending, sendChat, sendTyping } from '../lib/actions';
+import { discardPending, isChannelVisible, loadOlder, markRead, retryPending, sendChat, sendTyping } from '../lib/actions';
 import { formatTime, linkify } from '../lib/format';
 import { prepareImage } from '../lib/images';
 import { mentionQuery, mentionsMe, splitMentions } from '../lib/mentions';
@@ -148,7 +148,12 @@ function Messages({ channel, wide, intro }: { channel: string; wide?: boolean; i
             <div className="meta"><b style={{ color: me?.color }}>{me?.name}</b><time>{p.failed ? 'not sent' : 'sending…'}</time></div>
             {p.text && <div className="text">{p.text}</div>}
             <Pictures items={p.attachments} wide={wide} />
-            {p.failed && <button className="retry" onClick={() => retryPending(p.nonce)}>Try again</button>}
+            {p.failed && (
+              <span className="retry-row">
+                <button className="retry" onClick={() => retryPending(p.nonce)}>Try again</button>
+                <button className="retry" onClick={() => discardPending(p.nonce)}>Delete</button>
+              </span>
+            )}
           </div>
         </div>
       ))}
@@ -213,8 +218,15 @@ function MentionMenu({ names, query, active, onPick }: { names: string[]; query:
   );
 }
 
+/** Half-typed messages, per channel, so switching channels keeps each one where it was typed. */
+const textDrafts = new Map<string, string>();
+
 function Composer({ channel, placeholder, wide }: { channel: string; placeholder: string; wide?: boolean }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => textDrafts.get(channel) ?? '');
+  useEffect(() => {
+    if (text) textDrafts.set(channel, text);
+    else textDrafts.delete(channel);
+  }, [channel, text]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
@@ -405,9 +417,9 @@ export function TextView() {
           <span className="go">Back to voice →</span>
         </button>
       )}
-      <Messages channel={channel} wide intro={{ name: info.name }} />
+      <Messages key={channel} channel={channel} wide intro={{ name: info.name }} />
       <Typing channel={channel} />
-      <Composer channel={channel} placeholder={`Message #${info.name}`} wide />
+      <Composer key={channel} channel={channel} placeholder={`Message #${info.name}`} wide />
     </section>
   );
 }
@@ -426,9 +438,9 @@ export function VoiceChatPanel() {
         </span>
         <button className="ib" title="Close chat" aria-label="Close chat" onClick={() => setApp({ chatOpen: false })}><CloseIcon /></button>
       </header>
-      <Messages channel={channel} />
+      <Messages key={channel} channel={channel} />
       <Typing channel={channel} />
-      <Composer channel={channel} placeholder={`Message ${name}`} />
+      <Composer key={channel} channel={channel} placeholder={`Message ${name}`} />
     </aside>
   );
 }

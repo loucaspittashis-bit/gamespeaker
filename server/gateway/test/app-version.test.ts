@@ -32,7 +32,7 @@ describe('app versions', () => {
       LIVEKIT_API_KEY: 'k',
       LIVEKIT_API_SECRET: 'v',
     };
-    assert.equal(loadConfig(env).minAppVersion, '0.1.10');
+    assert.equal(loadConfig(env).minAppVersion, '0.1.11');
     assert.equal(loadConfig({ ...env, MIN_APP_VERSION: '0.2.0' }).minAppVersion, '0.2.0');
     assert.equal(loadConfig({ ...env, MIN_APP_VERSION: 'off' }).minAppVersion, null);
     assert.throws(() => loadConfig({ ...env, MIN_APP_VERSION: 'latest' }), /MIN_APP_VERSION/);

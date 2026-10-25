@@ -109,9 +109,16 @@ export function familyOf(exePath: string): Family {
   // but never something as broad as C:\Program Files.
   const parts = exePath.split(/[\\/]/).filter(Boolean);
   const root = parts.slice(0, -2);
-  const broad = /^(program files( \(x86\))?|windows|users)$/i;
+  // Library folders hold many games: following one game must not follow them all.
+  const broad = /^(program files( \(x86\))?|windows|users|games|common|steamapps|steamlibrary|steam|epic games|gog games|origin games|ea games|ubisoft game launcher)$/i;
   const installRoot = root.length >= 2 && !broad.test(root[root.length - 1]!) ? root.join('\\').toLowerCase() : null;
   return { exes, installRoot };
+}
+
+/** Whether follow-the-game should follow this program: a known game or a known game's client. */
+export function isFollowable(exePath: string): boolean {
+  const exe = lowerName(exePath);
+  return Boolean(KNOWN_GAMES[exe]) || GAME_FAMILIES.some((f) => f.includes(exe));
 }
 
 export function inFamily(f: Family, exePath: string): boolean {

@@ -2,7 +2,7 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, session, shell, systemPre
 import { nodeRequire } from './native';
 import { win32 } from './win32';
 import type { AppAudioStatus, CaptureListResult, CaptureSource } from '../shared/bridge';
-import { familyOf, inFamily, pickFamilyWindow, type Family } from '../shared/games';
+import { familyOf, inFamily, isFollowable, pickFamilyWindow, type Family } from '../shared/games';
 
 const SCREEN_PERMISSION_HELP =
   'macOS needs permission before Gamecoms can share your screen. Turn it on in System Settings → ' +
@@ -134,14 +134,21 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
   // separately per app (below), so friends never hear voice chat echoed back.
   session.defaultSession.setDisplayMediaRequestHandler(
     async (_request, callback) => {
-      const sources = await desktopCapturer.getSources({ types: ['window', 'screen'] });
+      // Take the pick now, so a second capture starting meanwhile can't swap it.
       const id = selectedSourceId;
       selectedSourceId = null;
-      const source = sources.find((s) => s.id === id) ?? null;
-      if (source) callback({ video: source });
-      // A window Windows' list skipped: capture it directly by its handle.
-      else if (id && /^window:\d+:/.test(id)) callback({ video: { id, name: 'Window' } });
-      else callback({});
+      try {
+        const sources = await desktopCapturer.getSources({ types: ['window', 'screen'], thumbnailSize: { width: 0, height: 0 } });
+        const source = sources.find((s) => s.id === id) ?? null;
+        if (source) callback({ video: source });
+        // A window Windows' list skipped: capture it directly by its handle.
+        else if (id && /^window:\d+:/.test(id)) callback({ video: { id, name: 'Window' } });
+        else callback({});
+      } catch {
+        // Never leave the page waiting forever.
+        if (id && /^window:\d+:/.test(id)) callback({ video: { id, name: 'Window' } });
+        else callback({});
+      }
     },
     { useSystemPicker: false },
   );
@@ -152,7 +159,8 @@ export function registerCapture(getWindow: () => BrowserWindow | null): void {
     const hwnd = Number(/^window:(\d+):/.exec(String(sourceId))?.[1] ?? 0);
     if (!win32 || !hwnd) return false;
     const exePath = win32.exePathOf(win32.pidOf(hwnd));
-    if (!exePath) return false;
+    // Only games: a closed browser or folder window must never move the stream to another one.
+    if (!exePath || !isFollowable(exePath)) return false;
     followFamily = familyOf(exePath);
     return true;
   });
