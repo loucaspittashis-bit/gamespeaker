@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, net, powerMonitor, protocol, session, shell } from 'electron';
 import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { constants as osConstants, setPriority } from 'node:os';
 import { join, normalize, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { registerCapture } from './capture';
@@ -79,6 +80,29 @@ if (!app.requestSingleInstanceLock()) {
 
 if (isWin) app.setAppUserModelId('com.gamespeaker.app');
 
+// Voice runs inside the app's page, and its mic processing must keep up even
+// when a game uses every core, or friends hear the voice break up and buzz.
+// Run that audio thread at real-time priority, and the page's process (and
+// the audio service) a step above normal programs.
+app.commandLine.appendSwitch('enable-features', 'AudioWorkletThreadRealtimePriority');
+
+function raisePriority(pid: number): void {
+  if (!isWin || !pid) return;
+  try {
+    setPriority(pid, osConstants.priority.PRIORITY_ABOVE_NORMAL);
+  } catch {
+    // not critical
+  }
+}
+
+function raiseAudioPriority(window: BrowserWindow): void {
+  if (window.isDestroyed()) return;
+  raisePriority(window.webContents.getOSProcessId());
+  for (const m of app.getAppMetrics()) {
+    if (m.type === 'Utility' && m.serviceName === 'audio.mojom.AudioService') raisePriority(m.pid);
+  }
+}
+
 function showWindow(): void {
   if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) win.restore();
@@ -112,6 +136,9 @@ function createWindow(): BrowserWindow {
       spellcheck: true,
     },
   });
+
+  // The page process can be replaced (reload, crash), so raise it each time it loads.
+  window.webContents.on('did-finish-load', () => raiseAudioPriority(window));
 
   // Hidden starts never show the window first (it would pop up over a game):
   // just wait minimized in the taskbar, or in the tray.

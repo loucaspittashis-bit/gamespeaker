@@ -74,6 +74,8 @@ export type AppState = {
   muted: boolean;
   deafened: boolean;
   micLevel: MicLevel;
+  /** The mic switched to light mode because the PC was too busy (see mic.ts). */
+  micLight: boolean;
   myLive: LiveInfo | null;
   /** How your own stream is doing: the quality it's sending now, and why it's lower if it is. */
   streamHealth: { tier: string; chosen: string; reason: 'upload' | 'pc' | null } | null;
@@ -128,6 +130,7 @@ export const useApp = create<AppState>()(() => ({
   muted: false,
   deafened: false,
   micLevel: { db: -100, open: false, threshold: -50 },
+  micLight: false,
   myLive: null,
   streamHealth: null,
 

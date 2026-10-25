@@ -68,11 +68,13 @@ export async function getMic(): Promise<MicPipeline> {
       mic = m;
       m.setMuted(app().muted || app().deafened);
       void m.setOutputDevice(settings().outputDevice);
-      // The PC couldn't keep up earlier in this session: start in direct mode.
-      if (micStruggled) void m.goDirect();
+      m.onClipping(() =>
+        toast("Your mic is so loud it distorts. Lower Input volume in Settings, or the mic's level in your system's sound settings.", 'warn'),
+      );
       m.onLevel((level) => {
         setApp({ micLevel: level });
-        const speaking = level.open && level.db > level.threshold - 4;
+        // Exactly when friends hear you: the gate, not a second threshold that flickers.
+        const speaking = level.open;
         if (speaking !== localSpeaking) {
           localSpeaking = speaking;
           setApp((s) => ({ members: s.members.map((x) => (x.isLocal ? { ...x, speaking } : x)) }));
@@ -449,12 +451,11 @@ async function publishMic(): Promise<boolean> {
 
 const MIC_CHECK_MS = 2000;
 /** Share of real time below which mic audio is being lost. */
-const MIC_BEHIND = 0.93;
-const MIC_BEHIND_CHECKS = 3;
+const MIC_BEHIND = 0.9;
+/** Ten seconds of it: a short hitch (a match loading) isn't enough. */
+const MIC_BEHIND_CHECKS = 5;
 let micHealthTimer: number | null = null;
 let offSendTrack: (() => void) | null = null;
-/** Remembered until the app restarts, so the next join starts in direct mode. */
-let micStruggled = false;
 
 function startMicHealth(): void {
   stopMicHealth();
@@ -482,10 +483,19 @@ function startMicHealth(): void {
     behind = (audio - prev.audio) / (at - prev.at) < MIC_BEHIND ? behind + 1 : 0;
     if (behind < MIC_BEHIND_CHECKS || micHealthTimer === null) return;
     stopMicHealth();
-    micStruggled = true;
     await m.goDirect().catch(() => {});
-    toast('Your PC got too busy to keep your mic smooth, so it switched to a lighter mode. If it keeps happening, turn Noise suppression down in Settings.', 'warn');
+    setApp({ micLight: true });
+    toast('Your PC got too busy to keep your mic smooth, so it switched to light mode. Settings > Voice switches it back.', 'warn');
   }, MIC_CHECK_MS);
+}
+
+/** Back to full noise suppression (Settings > Voice), watching again in case the PC is still too busy. */
+export async function backToFullMic(): Promise<void> {
+  const m = mic;
+  if (!m) return;
+  await m.goProcessed().catch(() => {});
+  setApp({ micLight: false });
+  if (micPub) startMicHealth();
 }
 
 function stopMicHealth(): void {
@@ -511,6 +521,7 @@ export async function leaveVoice(opts: { silent?: boolean } = {}): Promise<void>
   void mixContext?.close().catch(() => {});
   mixContext = null;
   setApp((s) => ({
+    micLight: false,
     voiceChannel: null,
     voiceStatus: 'idle',
     members: [],

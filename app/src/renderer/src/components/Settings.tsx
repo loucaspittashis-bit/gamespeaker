@@ -7,7 +7,7 @@ import { bridge, defaultServerUrl, isDesktop } from '../lib/platform';
 import { useSettings, updateSettings, type NoiseLevel } from '../lib/settings';
 import { sounds } from '../lib/sounds';
 import { NEON_PRESETS, neonName } from '../lib/theme';
-import { setMicTest } from '../lib/voice';
+import { backToFullMic, setMicTest } from '../lib/voice';
 import { AdminSettings } from './AdminSettings';
 import { ProfileSettings } from './ProfileEditor';
 import { Avatar } from './Avatar';
@@ -151,6 +151,7 @@ function Voice() {
   const inVoice = useApp((st) => Boolean(st.voiceChannel));
   const devices = useDevices();
   const [testing, setTesting] = useState(false);
+  const micLight = useApp((st) => st.micLight);
   const live = inVoice || testing;
 
   useEffect(() => () => void setMicTest(false), []);
@@ -199,6 +200,14 @@ function Voice() {
             <small style={{ width: '100%', color: 'var(--mute)', fontSize: 12 }}>
               {testing ? 'Talk now. You hear yourself the way friends do, after noise suppression.' : 'Hear yourself the way your friends do.'}
             </small>
+            {micLight && (
+              <div className="adm-hint" style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ flex: 1 }}>
+                  Your mic is in light mode: your PC got too busy for full noise suppression, so some room sound gets through.
+                </span>
+                <button className="btn-soft" onClick={() => void backToFullMic()}>Use full mode</button>
+              </div>
+            )}
           </div>
         </div>
       </Card>
@@ -263,7 +272,7 @@ function Voice() {
           ))}
         </div>
         <div className="hr" style={{ margin: '16px 0 6px' }} />
-        <Toggle on={s.echoCancellation} onChange={(v) => updateSettings({ echoCancellation: v })} title="Echo cancellation" desc="Stops friends hearing themselves through your speakers." />
+        <Toggle on={s.echoCancellation} onChange={(v) => updateSettings({ echoCancellation: v })} title="Echo cancellation" desc="Stops friends hearing themselves through your speakers. With headphones on you can turn it off for a slightly clearer voice." />
         <Toggle on={s.autoGain} onChange={(v) => updateSettings({ autoGain: v })} title="Automatic gain control" desc="Evens out your volume when you lean back or get loud." />
         <Toggle on={s.packetLossProtection} onChange={(v) => updateSettings({ packetLossProtection: v })} title="Packet loss protection" desc="Opus FEC and RED. Keeps your voice clear on shaky Wi-Fi. Applies next time you join." />
       </Card>
